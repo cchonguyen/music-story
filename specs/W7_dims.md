@@ -19,7 +19,8 @@ spotify_album_id. Must run in under 2 minutes on 250k events / 100k tracks: work
    `artist_norm || '::' || full_norm` (most common among the URI's events). `track_uri_map` gets every URI.
 2. Last.fm-only keys. For each distinct (artist_norm, full_norm) of events with `track_uri IS NULL`:
    (a) a Spotify-backed track whose events have the same key (several: most plays, then smallest
-   track_id); else (b) `isrcs[1]` of the MB recording found by the key's most common track_mbid
+   track_id); else (a') a fetched Spotify URI with no events whose first artist + title normalise to
+   the key (smallest ISRC; kept out of track_uri_map); else (b) `isrcs[1]` of the MB recording found by the key's most common track_mbid
    (lookup 'mbid'), or by lookup 'search' on the key with score >= 90; it joins a known track with
    that ISRC or becomes a new one; else (c) the fallback key. `track_key_map` holds every key seen in
    events (Spotify-backed keys map to their track).
