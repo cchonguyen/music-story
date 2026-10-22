@@ -85,3 +85,11 @@ def normalize_artist(s: str | None) -> str:
     if not s:
         return ""
     return normalize_text(_strip_feat(s))
+
+
+@cache
+def normalize_album(s: str | None) -> str:
+    """album_norm: remaster noise removed, then the shared text rules."""
+    if not s:
+        return ""
+    return normalize_text(NOISE_RE.sub("", s))
