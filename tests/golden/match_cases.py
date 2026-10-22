@@ -8,6 +8,7 @@ L(id, artist, track, t) was scrobbled at BASE + t.
 
 `expect` maps (sp_id, lfm_id) -> match_pass for every pair that must be
 linked. Any link not listed is a failure, so unlisted rows must stay unmatched.
+`dupes` lists the lfm_ids the matcher must move to lfm_self_dupes (twins).
 
 Matcher rules these encode (full text in specs/W2_match.md):
   candidates  artist_norm equal OR base_norm equal, artist token_set_ratio >= 85
@@ -18,6 +19,13 @@ Matcher rules these encode (full text in specs/W2_match.md):
               or both are equal
   greedy      1-to-1 over all candidates of both passes, sorted by
               is_full_listen DESC, pass ASC, |gap| ASC, score DESC
+  pass 3      leftovers only: artist_norm and base_norm equal, Spotify play is
+              a full listen, |scrobble - start| <= 3600 s, mix guardrail holds.
+              Greedy by |gap| ASC (iPhone clock offsets)
+  twins       after pass 3, an unmatched scrobble within 360 s of a matched
+              scrobble with the same artist_norm and full_norm is a double
+              scrobble: it moves to lfm_self_dupes (kept_lfm_id = the matched
+              one) and out of stg_lastfm
 """
 
 from datetime import datetime
@@ -47,6 +55,7 @@ class Case(NamedTuple):
     sp: list
     lfm: list
     expect: dict
+    dupes: tuple = ()
 
 
 CASES = [
@@ -72,15 +81,15 @@ CASES = [
          [L(1, "Disclosure", "Latch", -85)], {(1, 1): 1}),
 
     # --- 2. Outside the window ----------------------------------------------
-    Case("M08", "scrobble 4 min after the play ended",
+    Case("M08", "scrobble 4 min after the play ended -> pass 3",
          [S(1, "Burial", "Archangel", 0, 239_000)],
-         [L(1, "Burial", "Archangel", 239 + 240)], {}),
-    Case("M09", "scrobble 4 min before the play started",
+         [L(1, "Burial", "Archangel", 239 + 240)], {(1, 1): 3}),
+    Case("M09", "scrobble 4 min before the play started -> pass 3",
          [S(1, "Burial", "Archangel", 0, 239_000)],
-         [L(1, "Burial", "Archangel", -240)], {}),
-    Case("M10", "long pause: true start 10 min before ts - ms_played (documented miss)",
+         [L(1, "Burial", "Archangel", -240)], {(1, 1): 3}),
+    Case("M10", "long pause: true start 10 min before ts - ms_played -> pass 3",
          [S(1, "Bonobo", "Kerala", 0, 240_000)],
-         [L(1, "Bonobo", "Kerala", -600)], {}),
+         [L(1, "Bonobo", "Kerala", -600)], {(1, 1): 3}),
 
     # --- 3. Skip then replay (4-tier priority) ------------------------------
     Case("M11", "5 s false start, replay 6 s later; scrobble nearer the false start",
@@ -171,9 +180,9 @@ CASES = [
     Case("M36", "Original Mix vs plain title, -60 s -> pass 2",
          [S(1, "Eric Prydz", "Opus", 0, 543_000)],
          [L(1, "Eric Prydz", "Opus (Original Mix)", -60)], {(1, 1): 2}),
-    Case("M37", "Extended Mix vs plain title, 150 s apart -> no match (outside ±90 s)",
+    Case("M37", "Extended Mix vs plain title, 150 s apart -> pass 3 (outside pass 2's ±90 s)",
          [S(1, "Fisher", "Losing It - Extended Mix", 0, 395_000)],
-         [L(1, "FISHER", "Losing It", 150)], {}),
+         [L(1, "FISHER", "Losing It", 150)], {(1, 1): 3}),
     Case("M38", "conflicting explicit remixes are never merged",
          [S(1, "Bonobo", "Kerala - Fred again.. Remix", 0, 250_000)],
          [L(1, "Bonobo", "Kerala (Maceo Plex Remix)", 3)], {}),
@@ -263,4 +272,48 @@ CASES = [
          [S(1, "Disclosure", "Latch", 0, 255_000), S(2, "Disclosure", "Latch - Kaytranada Remix", 255, 245_000)],
          [L(1, "Disclosure", "Latch", 0), L(2, "Disclosure", "Latch (Kaytranada Remix)", 255)],
          {(1, 1): 1, (2, 2): 1}),
+
+    # --- 11. Twins (double scrobbles) ------------------------------------------
+    Case("M61", "one play, scrobbled twice 200 s apart: the second is a twin",
+         [S(1, "Caribou", "Odessa", 0, 289_000)],
+         [L(1, "Caribou", "Odessa", 0), L(2, "Caribou", "Odessa", 200)], {(1, 1): 1}, (2,)),
+    Case("M62", "twin scrobbled before the matched one still counts",
+         [S(1, "Caribou", "Odessa", 0, 289_000)],
+         [L(1, "Caribou", "Odessa", -300), L(2, "Caribou", "Odessa", 0)], {(1, 2): 1}, (1,)),
+    Case("M63", "second scrobble 7 min later is not a twin, stays Last.fm-only",
+         [S(1, "Caribou", "Odessa", 0, 289_000)],
+         [L(1, "Caribou", "Odessa", 0), L(2, "Caribou", "Odessa", 420)], {(1, 1): 1}),
+    Case("M64", "pass 3 before twins: a second full play claims the second scrobble",
+         [S(1, "Caribou", "Odessa", 0, 289_000), S(2, "Caribou", "Odessa", 1800, 289_000)],
+         [L(1, "Caribou", "Odessa", 0), L(2, "Caribou", "Odessa", 250)], {(1, 1): 1, (2, 2): 3}),
+    Case("M65", "different song 100 s after a matched one is not a twin",
+         [S(1, "Caribou", "Odessa", 0, 289_000)],
+         [L(1, "Caribou", "Odessa", 0), L(2, "Caribou", "Sun", 100)], {(1, 1): 1}),
+
+    # --- 12. Pass 3 (clock offsets up to an hour) ------------------------------
+    Case("M66", "iPhone offset: scrobble 40 min before the play -> pass 3",
+         [S(1, "Phoebe Bridgers", "Motion Sickness", 0, 230_000)],
+         [L(1, "Phoebe Bridgers", "Motion Sickness", -2400)], {(1, 1): 3}),
+    Case("M67", "offset beyond 1 h -> no match",
+         [S(1, "Phoebe Bridgers", "Motion Sickness", 0, 230_000)],
+         [L(1, "Phoebe Bridgers", "Motion Sickness", -3700)], {}),
+    Case("M68", "pass 3 never links a skip",
+         [S(1, "Phoebe Bridgers", "Motion Sickness", 0, 12_000)],
+         [L(1, "Phoebe Bridgers", "Motion Sickness", -600)], {}),
+    Case("M69", "pass 3 uses artist_norm, so a feat. credit still matches",
+         [S(1, "Phoebe Bridgers", "Motion Sickness", 0, 230_000)],
+         [L(1, "Phoebe Bridgers feat. Someone Else Entirely", "Motion Sickness", -600)], {(1, 1): 3}),
+    Case("M70", "pass 3 keeps the mix guardrail",
+         [S(1, "Disclosure", "Latch - Kaytranada Remix", 0, 245_000)],
+         [L(1, "Disclosure", "Latch (Joe Goddard Remix)", -600)], {}),
+    Case("M71", "pass 3 picks the nearest of two scrobbles; the far one is not a twin",
+         [S(1, "Phoebe Bridgers", "Kyoto", 0, 184_000)],
+         [L(1, "Phoebe Bridgers", "Kyoto", -2400), L(2, "Phoebe Bridgers", "Kyoto", -1200)], {(1, 2): 3}),
+    Case("M72", "pass 3 runs only on leftovers: a pass-1 link is never re-paired",
+         [S(1, "Phoebe Bridgers", "Kyoto", 0, 184_000), S(2, "Phoebe Bridgers", "Kyoto", 900, 184_000)],
+         [L(1, "Phoebe Bridgers", "Kyoto", 0), L(2, "Phoebe Bridgers", "Kyoto", -1500)],
+         {(1, 1): 1, (2, 2): 3}),
+    Case("M73", "pass 3 different artist with same title -> no match",
+         [S(1, "Jeff Buckley", "Hallelujah", 0, 413_000)],
+         [L(1, "Leonard Cohen", "Hallelujah", -600)], {}),
 ]

@@ -31,11 +31,17 @@ Tier: Opus, high effort (maxTurns 40). Deliverables: `pipeline/normalize.py`, `p
    (either mix_desc is NULL or generic, or both equal).
 2. Greedy 1-to-1 over all candidates sorted by is_full_listen DESC, pass ASC, |gap| ASC, score DESC
    (then sp_id, lfm_id for determinism). match_gap_sec is signed (scrobble - start).
-3. events: one row per stg_spotify row (event_id = sp_id, source both/spotify) plus one per unmatched
+3. Pass 3 (added 2026-10-22 after the real-data Gate 1 miss, 89.57%): on leftovers only, pairs with
+   equal artist_norm and base_norm, a full-listen Spotify play, |scrobble - start| <= 3600 s and the mix
+   guardrail; greedy by |gap|. Covers iPhone plays whose export time sits minutes to an hour off.
+   Then twins: an unmatched scrobble within 360 s of a matched scrobble with equal artist_norm and
+   full_norm is a double scrobble; it goes to lfm_self_dupes (kept_lfm_id = the matched one) and is
+   deleted from stg_lastfm. Pass 3 runs first so a real second play keeps its scrobble.
+4. events: one row per stg_spotify row (event_id = sp_id, source both/spotify) plus one per unmatched
    stg_lastfm row (event_id = 1e12 + lfm_id, source lastfm). is_skip = source 'spotify' and
    ms_played < 30000. For both rows, raw and norm strings come from Spotify, mbids from Last.fm.
-4. Never loop over pairs in SQL-unfriendly ways on the full data: 245k rows must finish in under
-   2 minutes. Print counts only: pass 1, pass 2, unmatched per source, Gate 1 share.
+5. Never loop over pairs in SQL-unfriendly ways on the full data: 245k rows must finish in under
+   2 minutes. Print counts only: pass 1, pass 2, pass 3, twins, unmatched per source, Gate 1 share.
 
 ## Done when
 All golden tests pass, `tests/test_match_fixture.py` passes (precision >= 0.99, recall >= 0.98 against

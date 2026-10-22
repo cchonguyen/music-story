@@ -1,5 +1,6 @@
 """Step 02: fill norm columns on the staging tables, link Spotify plays to Last.fm
-scrobbles (two passes, greedy 1-to-1), and rewrite match_links and events.
+scrobbles (two passes, greedy 1-to-1), link leftovers with pass 3, move double
+scrobbles (twins) to lfm_self_dupes, and rewrite match_links and events.
 
 Rules: specs/W2_match.md and the docstring of tests/golden/match_cases.py.
 """
@@ -15,6 +16,8 @@ from pipeline.normalize import is_generic_mix, normalize_artist, normalize_title
 
 WINDOW_SEC = 180       # pass 1: scrobble in [start - 3 min, end + 3 min]
 PASS2_GAP_SEC = 90     # pass 2: |scrobble - start| <= 90 s
+TWIN_SEC = 360         # twin: unmatched scrobble this close to a matched one of the same song
+PASS3_GAP_SEC = 3600   # pass 3: |scrobble - start| <= 1 h, leftovers only (iPhone clock offsets)
 ARTIST_MIN = 85
 TITLE_MIN = 92
 LFM_EVENT_OFFSET = 1_000_000_000_000
@@ -110,6 +113,63 @@ def greedy(cands: list[tuple]) -> list[tuple]:
     return links
 
 
+TWINS_SQL = f"""
+INSERT INTO lfm_self_dupes
+SELECT DISTINCT ON (u.lfm_id) u.lfm_id, k.lfm_id,
+       abs(epoch(u.scrobbled_at_utc) - epoch(k.scrobbled_at_utc))
+FROM stg_lastfm u JOIN stg_lastfm k
+  ON k.artist_norm = u.artist_norm AND k.full_norm = u.full_norm
+ AND u.artist_norm <> '' AND u.full_norm <> '' AND k.lfm_id <> u.lfm_id
+ AND abs(epoch(u.scrobbled_at_utc) - epoch(k.scrobbled_at_utc)) <= {TWIN_SEC}
+WHERE u.lfm_id NOT IN (SELECT lfm_id FROM match_links)
+  AND k.lfm_id IN (SELECT lfm_id FROM match_links)
+ORDER BY u.lfm_id, abs(epoch(u.scrobbled_at_utc) - epoch(k.scrobbled_at_utc)), k.lfm_id
+"""
+
+PASS3_SQL = f"""
+SELECT s.sp_id, l.lfm_id, s.mix_desc, l.mix_desc,
+       (epoch_us(l.scrobbled_at_utc) - epoch_us(s.started_at_utc)) / 1e6 AS gap
+FROM stg_spotify s JOIN stg_lastfm l
+  ON s.artist_norm = l.artist_norm AND s.base_norm = l.base_norm
+ AND s.artist_norm <> '' AND s.base_norm <> ''
+ AND l.scrobbled_at_utc BETWEEN s.started_at_utc - INTERVAL {PASS3_GAP_SEC} SECOND
+                            AND s.started_at_utc + INTERVAL {PASS3_GAP_SEC} SECOND
+WHERE s.is_full_listen
+  AND s.sp_id NOT IN (SELECT sp_id FROM match_links)
+  AND l.lfm_id NOT IN (SELECT lfm_id FROM match_links)
+"""
+
+
+def pass3(rows: list[tuple]) -> list[tuple]:
+    """Greedy 1-to-1 over leftover pairs with equal names, nearest first."""
+    cands = [(sp, lf, gap) for sp, lf, s_mix, l_mix, gap in rows
+             if is_generic_mix(s_mix) or is_generic_mix(l_mix) or s_mix == l_mix]
+    cands.sort(key=lambda c: (abs(c[2]), c[0], c[1]))
+    used_sp: set[int] = set()
+    used_lf: set[int] = set()
+    links = []
+    for sp_id, lfm_id, gap in cands:
+        if sp_id in used_sp or lfm_id in used_lf:
+            continue
+        used_sp.add(sp_id)
+        used_lf.add(lfm_id)
+        links.append((sp_id, lfm_id, 3, gap, 100.0))
+    return links
+
+
+def _insert_links(con: duckdb.DuckDBPyConnection, links: list[tuple]) -> None:
+    tbl = pa.table({
+        "sp_id": pa.array([r[0] for r in links], pa.int64()),
+        "lfm_id": pa.array([r[1] for r in links], pa.int64()),
+        "match_pass": pa.array([r[2] for r in links], pa.int8()),
+        "match_gap_sec": pa.array([float(r[3]) for r in links], pa.float64()),
+        "fuzzy_score": pa.array([float(r[4]) for r in links], pa.float64()),
+    })
+    con.register("_links", tbl)
+    con.execute("INSERT INTO match_links SELECT * FROM _links")
+    con.unregister("_links")
+
+
 EVENTS_SQL = f"""
 INSERT INTO events
 SELECT s.sp_id AS event_id, s.sp_id, m.lfm_id,
@@ -141,24 +201,26 @@ def run(con: duckdb.DuckDBPyConnection) -> None:
 
     con.execute("DELETE FROM events")
     con.execute("DELETE FROM match_links")
-    tbl = pa.table({
-        "sp_id": pa.array([r[0] for r in links], pa.int64()),
-        "lfm_id": pa.array([r[1] for r in links], pa.int64()),
-        "match_pass": pa.array([r[2] for r in links], pa.int8()),
-        "match_gap_sec": pa.array([float(r[3]) for r in links], pa.float64()),
-        "fuzzy_score": pa.array([float(r[4]) for r in links], pa.float64()),
-    })
-    con.register("_links", tbl)
-    con.execute("INSERT INTO match_links SELECT * FROM _links")
-    con.unregister("_links")
+    _insert_links(con, links)
+
+    links3 = pass3(con.execute(PASS3_SQL).fetchall())
+    _insert_links(con, links3)
+    links += links3
+
+    # Twins leave stg_lastfm, like step 01's self-dupes. Re-runs find none left.
+    before = con.execute("SELECT count(*) FROM lfm_self_dupes").fetchone()[0]
+    con.execute(TWINS_SQL)
+    con.execute("DELETE FROM stg_lastfm WHERE lfm_id IN (SELECT lfm_id FROM lfm_self_dupes)")
+    n_twins = con.execute("SELECT count(*) FROM lfm_self_dupes").fetchone()[0] - before
     con.execute(EVENTS_SQL)
 
     n_sp, n_lf = con.execute("SELECT (SELECT count(*) FROM stg_spotify), (SELECT count(*) FROM stg_lastfm)").fetchone()
     p1 = sum(1 for r in links if r[2] == 1)
-    p2 = len(links) - p1
+    p2 = sum(1 for r in links if r[2] == 2)
+    p3 = len(links3)
     gate1 = con.execute("""SELECT avg((m.lfm_id IS NOT NULL)::INT) FROM stg_lastfm l
                            LEFT JOIN match_links m USING (lfm_id)
                            WHERE year(l.scrobbled_at_utc) BETWEEN 2023 AND 2026""").fetchone()[0]
     gate1_txt = "n/a" if gate1 is None else f"{gate1:.2%}"
-    print(f"  match: pass1={p1} pass2={p2} unmatched spotify={n_sp - len(links)} "
+    print(f"  match: pass1={p1} pass2={p2} pass3={p3} twins={n_twins} unmatched spotify={n_sp - len(links)} "
           f"unmatched lastfm={n_lf - len(links)} gate1(2023-2026)={gate1_txt}")

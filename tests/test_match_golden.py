@@ -37,7 +37,10 @@ def test_golden_match(case):
     got = {(sp, lf): p for sp, lf, p in con.execute("SELECT sp_id, lfm_id, match_pass FROM match_links").fetchall()}
     assert got == case.expect
 
+    dupes = {r[0] for r in con.execute("SELECT lfm_id FROM lfm_self_dupes").fetchall()}
+    assert dupes == set(case.dupes)
+
     n_events = con.execute("SELECT count(*) FROM events").fetchone()[0]
-    assert n_events == len(case.sp) + len(case.lfm) - len(case.expect)
+    assert n_events == len(case.sp) + len(case.lfm) - len(case.expect) - len(case.dupes)
     both = con.execute("SELECT count(*) FROM events WHERE source = 'both'").fetchone()[0]
     assert both == len(case.expect)
