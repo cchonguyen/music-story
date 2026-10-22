@@ -15,9 +15,29 @@ Plot.plot({
 })
 ```
 
+## Listening hours per year
+
 ```js
-Inputs.table(year)
+Plot.plot({
+  x: {label: "Year", tickFormat: "d"},
+  y: {label: "Listening hours", grid: true},
+  marks: [Plot.barY(year, {x: "year", y: "listen_hours"}), Plot.ruleY([0])]
+})
 ```
+
+## New artists per year
+
+Artists whose first play falls in that year.
+
+```js
+Plot.plot({
+  x: {label: "Year", tickFormat: "d"},
+  y: {label: "New artists", grid: true},
+  marks: [Plot.barY(year, {x: "year", y: "new_artists"}), Plot.ruleY([0])]
+})
+```
+
+<!-- story: overview narrative -->
 
 ## When I listen
 
