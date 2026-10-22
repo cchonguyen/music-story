@@ -11,13 +11,13 @@ YEAR_COLS = ["year", "plays", "skips", "listen_hours", "artists", "tracks", "new
              "sessions"]
 
 
-def test_year_rows_on_fixture():
+def test_year_rows_on_fixture(fixture_db_path):
     rows = mart_rows("year")
     assert len(rows) == 20
     assert list(rows[0]) == YEAR_COLS
 
 
-def test_cli_prints_json():
+def test_cli_prints_json(fixture_db_path):
     out = subprocess.run([sys.executable, "-m", "pipeline.site_data", "year"], cwd=config.REPO_ROOT,
                          capture_output=True, text=True, check=True).stdout
     data = json.loads(out)
