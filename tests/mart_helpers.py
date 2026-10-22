@@ -7,20 +7,11 @@ from pathlib import Path
 
 import duckdb
 
-from pipeline import config
-
-INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_track", "bridge_track_artist",
-                "track_genre", "genre_map", "fixture_scenarios"]
+from pipeline.site_data import fixture_marts
 
 
 def mart_db(fixture_db_path: Path, mart_file: str) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect()
-    con.execute(f"ATTACH '{fixture_db_path}' AS fx (READ_ONLY)")
-    for t in INPUT_TABLES:
-        con.execute(f"CREATE TABLE {t} AS SELECT * FROM fx.{t}")
-    con.execute("DETACH fx")
-    con.execute((config.SQL_DIR / "marts" / mart_file).read_text())
-    return con
+    return fixture_marts(fixture_db_path, mart_file)
 
 
 def columns(con: duckdb.DuckDBPyConnection, table: str) -> list[str]:

@@ -25,3 +25,4 @@ site/.observablehq/cache/
 node_modules/
 
 .DS_Store
+site/src/.observablehq/cache/
