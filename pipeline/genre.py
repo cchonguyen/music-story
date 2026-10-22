@@ -36,11 +36,19 @@ WITH lvl AS (
     FROM dim_track t JOIN enr_lastfm_tags l
       ON l.entity_type = 'track' AND l.entity_key = t.artist_norm || '::' || t.full_norm
     UNION ALL
-    SELECT t.track_id, 'track', lower(trim(g.tag)), 100.0
-    FROM dim_track t JOIN enr_mb_recording r
-      ON (r.lookup_kind = 'isrc' AND r.lookup_key = t.isrc)
-      OR (r.lookup_kind = 'mbid' AND r.lookup_key = t.track_id)
-    , unnest(r.genres) g(tag)
+    -- MB recordings reach a track through any ISRC they list (isrc and mbid lookups) or, for
+    -- search lookups, through the track's key; each recording counts once per track.
+    SELECT track_id, 'track', lower(trim(g.tag)), 100.0
+    FROM (
+        SELECT DISTINCT t.track_id, r.genres
+        FROM dim_track t
+        JOIN (SELECT genres, unnest(isrcs) AS isrc FROM enr_mb_recording WHERE http_status = 200) r
+          ON r.isrc = t.isrc
+        UNION
+        SELECT t.track_id, r.genres
+        FROM dim_track t JOIN enr_mb_recording r
+          ON r.lookup_kind = 'search' AND r.lookup_key = t.artist_norm || '::' || t.full_norm AND r.score >= 90
+    ) x, unnest(x.genres) g(tag)
     UNION ALL
     SELECT t.track_id, 'album', l.tag, l.count::DOUBLE
     FROM dim_track t JOIN dim_album a USING (album_id) JOIN enr_lastfm_tags l
