@@ -1,0 +1,16 @@
+country,tz,multi_zone,note
+US,America/Los_Angeles,true,home rule: Charlie always lived in Pacific time
+BE,Europe/Brussels,false,
+CA,America/Vancouver,true,guess: nearest to home; check trips
+CR,America/Costa_Rica,false,
+DK,Europe/Copenhagen,false,
+FR,Europe/Paris,false,
+GB,Europe/London,false,
+HK,Asia/Hong_Kong,false,
+JP,Asia/Tokyo,false,
+MX,America/Mexico_City,true,
+PR,America/Puerto_Rico,false,
+SA,Asia/Riyadh,false,
+TH,Asia/Bangkok,false,
+TW,Asia/Taipei,false,
+VN,Asia/Ho_Chi_Minh,false,
