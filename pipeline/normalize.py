@@ -93,3 +93,18 @@ def normalize_album(s: str | None) -> str:
     if not s:
         return ""
     return normalize_text(NOISE_RE.sub("", s))
+
+
+_MIX_CREDIT_RE = re.compile(r"^(.*?)\s*\b(?:remix|mix|edit|rework|bootleg|flip|dub|vip)$")
+
+
+@cache
+def mix_credit(mix_desc: str | None) -> str | None:
+    """The artist credited in a mix descriptor: the text before a trailing remix/mix/edit/... word,
+    normalised as an artist. 'kilo vantage remix' -> 'kilo vantage'. None when nothing precedes it."""
+    if not mix_desc:
+        return None
+    m = _MIX_CREDIT_RE.match(normalize_text(mix_desc))
+    if not m:
+        return None
+    return normalize_artist(m.group(1)) or None
