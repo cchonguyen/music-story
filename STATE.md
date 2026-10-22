@@ -2,7 +2,6 @@
 
 Wave: 1 done (windows 1+2, 2026-10-22). Fetch running on Charlie's machine.
 Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
-Real: pass1 58159, pass2 450, pass3 2021, twins 1143; events both 60630 / spotify 69766 / lastfm 46120.
 
 | Packet | Tier | Status |
 |---|---|---|
@@ -27,12 +26,7 @@ Next:
    W7-W10 can be built on the fixture now; real run `build_pipeline` (03-07) waits for the fetch.
 
 Decisions (window 1 review):
-- Gate 1 miss causes (real 2023-26, 2,660 unmatched): 986 double scrobbles 2-4 min apart;
-  ~700 same song on Spotify 3-60 min off (all platforms; real pass 3: median 15 min,
-  95% scrobble before play); ~1,100 other song playing (other app/device,
-  genuinely Last.fm-only). Fix: pass 3 (equal names, full listen, <= 1 h) then twins (<= 360 s,
-  same full_norm -> lfm_self_dupes). Pass 3 is 337/339 correct vs fixture truth_links.
-  Fixture precision now scored against truth_links (fx.match_links only holds pass 1/2 pairs).
+- Gate 1 fix (pass 3 + twins): see CLAUDE.md decision log and specs/W2_match.md rule 3.
 - Album key = `artist_norm::normalize_album(album_raw)` (`normalize_album` in normalize.py:
   remaster noise off + text rules). W7/W9 must use it for album_norm.
 - enr_local_duration reads stg_spotify; NULL `skipped` counts as not skipped (old exports).
