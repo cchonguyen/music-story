@@ -13,14 +13,18 @@ Real: pass1 58159, pass2 450, pass3 2021, twins 1143; events both 60630 / spotif
 | W4 site + deploy config | Sonnet | done (main), first try; Framework 1.13.4, 828 KB build |
 | W5 simple marts | Haiku | done (main), first try |
 | W6 trap marts | Opus | done (main), first try |
-| W7 dims, W8 sessions, W9 taxonomy, W10 charts | | wave 2, after the fetch |
+| W7 dims `pipeline/dims.py` | Opus | todo, spec `specs/W7_dims.md` |
+| W8 sessions `sql/05_sessions.sql` | Sonnet | todo, spec `specs/W8_sessions.md` |
+| W9 genre `pipeline/genre.py` + csv | Sonnet | todo, spec `specs/W9_genre.md` |
+| W10 chapters + charts | Sonnet | todo, spec `specs/W10_charts.md` |
 
 Next:
 1. Charlie: `uv run python -m pipeline.enrich status` (hours), then `uv run python -m pipeline.enrich fetch`.
 2. Fixture site LIVE 2026-10-22 behind Access (team REDACTED-ACCESS-TEAM, allow redacted-email@example.com).
    Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
    Real-data deploy waits for W7-W9 (marts need dims, sessions, genre). Build with SITE_DB=build/music.duckdb.
-3. Wave 2 (W7 dims, W8 sessions, W9 taxonomy, W10 charts) after the fetch finishes.
+3. Wave 2 specs + tests ready (self-tested: fixture answers pass 65/66; the 1 is the >=100-row genre map).
+   W7-W10 can be built on the fixture now; real run `build_pipeline` (03-07) waits for the fetch.
 
 Decisions (window 1 review):
 - Gate 1 miss causes (real 2023-26, 2,660 unmatched): 986 double scrobbles 2-4 min apart;
