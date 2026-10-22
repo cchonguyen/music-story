@@ -13,6 +13,13 @@ import duckdb
 
 from pipeline import config
 
+# The site only shows the top of these marts; trimming here keeps page data small on real history.
+SITE_FILTERS = {
+    "artist_year": "rank <= 50",
+    "track_year": "rank <= 50",
+    "binge": "window_plays >= 15",
+}
+
 INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_track", "bridge_track_artist",
                 "track_genre", "genre_map", "fixture_scenarios"]
 
@@ -40,7 +47,8 @@ def mart_rows(name: str, db: Path | None = None) -> list[dict]:
     else:
         con = fixture_marts(config.FIXTURE_DB)
     try:
-        cur = con.execute(f"SELECT * FROM mart_{name} ORDER BY ALL")
+        where = f"WHERE {SITE_FILTERS[name]}" if name in SITE_FILTERS else ""
+        cur = con.execute(f"SELECT * FROM mart_{name} {where} ORDER BY ALL")
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
     finally:
