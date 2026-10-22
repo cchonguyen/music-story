@@ -1,0 +1,229 @@
+"""W3 acceptance: enrichment clients, cache, queue order and cache parsing. No network."""
+
+from __future__ import annotations
+
+import json
+
+import duckdb
+import httpx
+import pytest
+from helpers import fresh_db, scalar
+
+from pipeline import enrich
+from pipeline.enrich_cache import Cache
+from pipeline.enrich_clients import Fetcher, RateLimited, build_request
+from pipeline.enrich_queue import seed_queue
+
+
+def make_fetcher(handler, cache, api="deezer", sleeps=None):
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    log = sleeps if sleeps is not None else []
+    return Fetcher(api, client, cache, interval=0, sleep=log.append), log
+
+
+def test_cache_hit_skips_request():
+    cache = Cache(":memory:")
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        return httpx.Response(200, json={"id": 1})
+
+    f, _ = make_fetcher(handler, cache)
+    req = build_request("deezer", "track", "ISRC1")
+    assert f.fetch("track", "ISRC1", req).from_cache is False
+    assert f.fetch("track", "ISRC1", req).from_cache is True
+    assert len(calls) == 1
+
+
+def test_404_is_cached():
+    cache = Cache(":memory:")
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        return httpx.Response(404, json={"error": "nope"})
+
+    f, _ = make_fetcher(handler, cache, api="spotify")
+    req = build_request("spotify", "tracks", "abc")
+    assert f.fetch("tracks", "abc", req).status == 404
+    assert f.fetch("tracks", "abc", req).from_cache is True
+    assert len(calls) == 1
+    assert cache.get("spotify", "tracks", "abc")[0] == 404
+
+
+def test_429_honours_retry_after_then_succeeds():
+    cache = Cache(":memory:")
+    seen = []
+
+    def handler(req):
+        seen.append(1)
+        if len(seen) == 1:
+            return httpx.Response(429, headers={"Retry-After": "7"})
+        return httpx.Response(200, json={"id": 2})
+
+    f, sleeps = make_fetcher(handler, cache)
+    res = f.fetch("track", "K", build_request("deezer", "track", "K"))
+    assert res.status == 200 and len(seen) == 2
+    assert 7.0 in sleeps
+
+
+def test_huge_retry_after_stops_the_api():
+    cache = Cache(":memory:")
+    f, _ = make_fetcher(lambda r: httpx.Response(429, headers={"Retry-After": "86400"}), cache)
+    with pytest.raises(RateLimited):
+        f.fetch("track", "K", build_request("deezer", "track", "K"))
+
+
+def test_5xx_backs_off_then_records_error():
+    cache = Cache(":memory:")
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        return httpx.Response(503)
+
+    f, sleeps = make_fetcher(handler, cache)
+    cache.enqueue([("deezer", "track", "K", 1)])
+    res = f.fetch("track", "K", build_request("deezer", "track", "K"))
+    assert res.status is None and len(calls) == 5
+    assert sleeps == [2.0, 4.0, 8.0, 16.0]
+    assert cache.get("deezer", "track", "K") is None
+    assert cache.next_item("deezer") is None  # failed items leave the eligible queue
+    assert cache.status_counts()[0][4] == 1
+
+
+def test_spotify_response_cascades_follow_ups():
+    cache = Cache(":memory:")
+    body = {"external_ids": {"isrc": "USX"}, "artists": [{"id": "ar1", "name": "A"}, {"id": "ar2"}]}
+    f, _ = make_fetcher(lambda r: httpx.Response(200, json=body), cache, api="spotify")
+    f.fetch("tracks", "t1", build_request("spotify", "tracks", "t1"), priority=3)
+    queued = {(a, e, k, p) for a, e, k, p in cache.db.execute(
+        "SELECT api, endpoint, key, priority FROM fetch_queue")}
+    assert queued == {("spotify", "artists", "ar1", 3), ("musicbrainz", "isrc", "USX", 3),
+                      ("deezer", "track", "USX", 3)}
+
+
+def _events_db():
+    con = fresh_db()
+    rows = []  # (event_id, track_uri, artist_norm, full_norm, album_raw, track_mbid)
+    for i in range(3):
+        rows.append(("spotify:track:popular", "a", "pop", "Alb"))
+    for i in range(2):
+        rows.append(("spotify:track:middle", "a", "mid", "Alb"))
+    rows.append(("spotify:track:rare", "b", "rare", None))
+    rows.append((None, "c", "lfm", None, "mbid-1"))
+    rows.append((None, "c", "lfm2", None))
+    for n, r in enumerate(rows, 1):
+        uri, artist, full, album = r[:4]
+        mbid = r[4] if len(r) > 4 else None
+        con.execute(
+            "INSERT INTO events(event_id, source, started_at_utc, is_skip, track_uri, artist_raw, track_raw,"
+            " album_raw, artist_norm, full_norm, base_norm, track_mbid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            [n, "spotify" if uri else "lastfm", "2024-01-01", False, uri, artist.upper(), full.upper(),
+             album, artist, full, full, mbid],
+        )
+    return con
+
+
+def test_queue_order_follows_play_count():
+    con = _events_db()
+    cache = Cache(":memory:")
+    seed_queue(con, cache, {"spotify", "musicbrainz", "lastfm"})
+    order = []
+    while (item := cache.next_item("spotify")):
+        order.append(item[1])
+        cache.put("spotify", item[0], item[1], 404, "{}")
+    assert order == ["popular", "middle", "rare"]
+    assert cache.get("musicbrainz", "recording", "mbid-1") is None
+    mb = {(e, k) for e, k in cache.db.execute("SELECT endpoint, key FROM fetch_queue WHERE api='musicbrainz'")}
+    assert mb == {("recording", "mbid-1"), ("search", "c::lfm2")}
+    lfm_tracks = [k for (k,) in cache.db.execute(
+        "SELECT key FROM fetch_queue WHERE endpoint='track.getTopTags' ORDER BY priority")]
+    assert lfm_tracks[:2] == ["a::pop", "a::mid"]
+    # reseeding after work is done does not requeue cached items
+    seed_queue(con, cache, {"spotify"})
+    assert cache.next_item("spotify") is None
+
+
+def put(cache, api, endpoint, key, status, body):
+    cache.put(api, endpoint, key, status, json.dumps(body) if body is not None else None)
+
+
+def test_run_fills_every_enr_table(tmp_path):
+    cache_path = tmp_path / "c.sqlite"
+    cache = Cache(cache_path)
+    put(cache, "spotify", "tracks", "t1", 200, {
+        "name": "Song", "duration_ms": 200000, "explicit": True, "external_ids": {"isrc": "USX1"},
+        "album": {"id": "al1", "name": "Alb", "album_type": "album", "release_date": "2001-05",
+                  "release_date_precision": "month"},
+        "artists": [{"id": "ar1", "name": "Art"}]})
+    put(cache, "spotify", "tracks", "gone", 404, {"error": {"status": 404}})
+    put(cache, "spotify", "artists", "ar1", 200, {"name": "Art", "genres": ["rock", "pop"]})
+    put(cache, "musicbrainz", "isrc", "USX1", 200, {"isrc": "USX1", "recordings": [
+        {"id": "r2", "title": "Song", "length": 1, "first-release-date": "2005",
+         "artist-credit": [{"name": "Art", "joinphrase": "", "artist": {"id": "m1", "name": "Art"}}]},
+        {"id": "r1", "title": "Song", "length": 199000, "first-release-date": "2001-05-01",
+         "artist-credit": [{"name": "Art", "joinphrase": "", "artist": {"id": "m1", "name": "Art"}}]}]})
+    put(cache, "musicbrainz", "recording", "mb-r", 200, {
+        "id": "mb-r", "title": "L", "length": 1000, "isrcs": ["USL1"], "genres": [{"name": "jazz"}],
+        "first-release-date": "1999", "artist-credit": []})
+    put(cache, "musicbrainz", "search", "x::y", 200, {"recordings": [
+        {"id": "s1", "title": "Y", "score": 80, "artist-credit": []},
+        {"id": "s2", "title": "Y", "score": 100, "artist-credit": []}]})
+    put(cache, "musicbrainz", "artist", "m1", 200, {
+        "id": "m1", "name": "Art", "type": "Group", "country": "GB",
+        "life-span": {"begin": "1990-02-03", "end": None}, "genres": [{"name": "rock"}]})
+    put(cache, "lastfm", "track.getTopTags", "art::song", 200,
+        {"toptags": {"tag": [{"count": 100, "name": " Rock "}, {"count": 40, "name": "pop"}]}})
+    put(cache, "lastfm", "artist.getTopTags", "art", 200, {"toptags": {"tag": {"count": 90, "name": "indie"}}})
+    put(cache, "lastfm", "album.getTopTags", "art::alb", 200, {"toptags": {"tag": [{"count": 5, "name": "x"}]}})
+    put(cache, "lastfm", "artist.getInfo", "art", 200,
+        {"artist": {"mbid": "m1", "stats": {"listeners": "1000", "playcount": "9000"}}})
+    put(cache, "lastfm", "track.getInfo", "x::y", 200,
+        {"track": {"mbid": "", "listeners": "5", "playcount": "6", "duration": "0"}})
+    put(cache, "lastfm", "track.getInfo", "x::z", 200,
+        {"track": {"mbid": "", "listeners": "5", "playcount": "6", "duration": "180000"}})
+    put(cache, "deezer", "track", "USX1", 200, {"id": 77, "bpm": 0, "gain": -9.5, "duration": 200,
+                                                "release_date": "2001-05-01"})
+    put(cache, "deezer", "track", "USX2", 200, {"error": {"code": 800}})
+    cache.close()
+
+    con = fresh_db()
+    con.execute(
+        "INSERT INTO stg_spotify(sp_id, started_at_utc, ended_at_utc, ms_played, is_full_listen, track_uri,"
+        " reason_end, skipped) VALUES (1,'2024-01-01','2024-01-01',200000,true,'u1','trackdone',false),"
+        "(2,'2024-01-01','2024-01-01',150000,true,'u1','trackdone',NULL),"
+        "(3,'2024-01-01','2024-01-01',90000,true,'u1','fwdbtn',true),"
+        "(4,'2024-01-01','2024-01-01',5,false,'u2','fwdbtn',true)"
+    )
+    enrich.run(con, cache_path)
+
+    for table in ("enr_local_duration", "enr_spotify_track", "enr_spotify_artist", "enr_mb_recording",
+                  "enr_mb_artist", "enr_lastfm_tags", "enr_lastfm_info", "enr_deezer_track"):
+        assert scalar(con, f"SELECT count(*) FROM {table}") > 0, table
+    assert con.execute("SELECT duration_ms, n_completed FROM enr_local_duration").fetchall() == [(200000, 2)]
+    assert scalar(con, "SELECT count(*) FROM enr_spotify_track WHERE http_status=404 AND isrc IS NULL") == 1
+    assert con.execute("SELECT artists[1].id, release_date_precision FROM enr_spotify_track "
+                       "WHERE track_uri='spotify:track:t1'").fetchone() == ("ar1", "month")
+    assert con.execute("SELECT recording_mbid, first_release_date FROM enr_mb_recording "
+                       "WHERE lookup_kind='isrc'").fetchone() == ("r1", "2001-05-01")
+    assert con.execute("SELECT recording_mbid, score FROM enr_mb_recording "
+                       "WHERE lookup_kind='search'").fetchone() == ("s2", 100)
+    assert con.execute("SELECT begin_year, end_year, country FROM enr_mb_artist").fetchone() == (1990, None, "GB")
+    assert scalar(con, "SELECT count(*) FROM enr_lastfm_tags WHERE tag='rock' AND count=100") == 1
+    assert scalar(con, "SELECT count(*) FROM enr_lastfm_tags WHERE entity_type='artist'") == 1
+    assert scalar(con, "SELECT duration_ms FROM enr_lastfm_info WHERE entity_key='x::y'") is None
+    assert scalar(con, "SELECT duration_ms FROM enr_lastfm_info WHERE entity_key='x::z'") == 180000
+    assert scalar(con, "SELECT bpm FROM enr_deezer_track WHERE isrc='USX1'") is None
+    assert scalar(con, "SELECT http_status FROM enr_deezer_track WHERE isrc='USX2'") == 404
+    # running again is idempotent
+    enrich.run(con, cache_path)
+    assert scalar(con, "SELECT count(*) FROM enr_deezer_track") == 2
+
+
+def test_run_with_empty_cache(tmp_path):
+    con = fresh_db()
+    enrich.run(con, tmp_path / "empty.sqlite")
+    assert isinstance(con, duckdb.DuckDBPyConnection)
+    assert scalar(con, "SELECT count(*) FROM enr_spotify_track") == 0
