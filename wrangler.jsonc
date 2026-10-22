@@ -1,0 +1,11 @@
+{
+  "name": "music-story",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./site/dist",
+    "not_found_handling": "404-page"
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "music.charliechonguyen.com", "custom_domain": true }]
+}
