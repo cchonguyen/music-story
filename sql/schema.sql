@@ -111,7 +111,8 @@ CREATE OR REPLACE TABLE stg_lastfm (
 -- as the previous scrobble of that pair, at most 60 s later).
 CREATE OR REPLACE TABLE lfm_self_dupes (
     lfm_id           BIGINT PRIMARY KEY,
-    kept_lfm_id      BIGINT NOT NULL,     -- the earlier scrobble it duplicates
+    kept_lfm_id      BIGINT NOT NULL,     -- step 01: the earlier scrobble it duplicates;
+                                          -- step 02 twins: the matched scrobble within 360 s
     gap_sec          DOUBLE NOT NULL
 );
 
@@ -123,7 +124,7 @@ CREATE OR REPLACE TABLE lfm_self_dupes (
 CREATE OR REPLACE TABLE match_links (
     sp_id          BIGINT NOT NULL UNIQUE,
     lfm_id         BIGINT NOT NULL UNIQUE,
-    match_pass     TINYINT NOT NULL,      -- 1 = full title, 2 = base title
+    match_pass     TINYINT NOT NULL,      -- 1 = full title, 2 = base title, 3 = equal names within 1 h
     match_gap_sec  DOUBLE NOT NULL,       -- scrobbled_at_utc - started_at_utc (signed)
     fuzzy_score    DOUBLE NOT NULL        -- 0..100, title score of the winning pass
 );

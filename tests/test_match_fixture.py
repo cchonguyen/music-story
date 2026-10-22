@@ -20,12 +20,28 @@ def matched(fixture_db_path):
     return con
 
 
+TRUE_PAIRS = """
+    SELECT s.sp_id, l.lfm_id FROM fx.truth_links t
+    JOIN fx.stg_spotify s ON s.ended_at_utc = t.sp_ts AND s.track_uri = t.sp_uri AND s.ms_played = t.sp_ms
+    JOIN fx.stg_lastfm l ON l.scrobbled_at_utc = make_timestamp(t.lfm_uts * 1000000)
+                        AND l.artist_raw = t.lfm_artist AND l.track_raw = t.lfm_track"""
+
+
 def test_precision_and_recall(matched):
-    tp = scalar(matched, "SELECT count(*) FROM match_links JOIN fx.match_links USING (sp_id, lfm_id)")
+    # Precision against every real listen pair (pass 3 finds pairs outside the
+    # pass-1/2 windows); recall against the pairs passes 1 and 2 must find.
+    true_pos = scalar(matched, f"SELECT count(*) FROM match_links JOIN ({TRUE_PAIRS}) USING (sp_id, lfm_id)")
     got = scalar(matched, "SELECT count(*) FROM match_links")
+    tp = scalar(matched, "SELECT count(*) FROM match_links JOIN fx.match_links USING (sp_id, lfm_id)")
     want = scalar(matched, "SELECT count(*) FROM fx.match_links")
-    assert tp / got >= 0.99, f"precision {tp / got:.4f}"
+    assert true_pos / got >= 0.99, f"precision {true_pos / got:.4f}"
     assert tp / want >= 0.98, f"recall {tp / want:.4f}"
+
+
+def test_twins_are_not_real_listens(matched):
+    twins = scalar(matched, "SELECT count(*) FROM lfm_self_dupes")
+    real = scalar(matched, f"SELECT count(*) FROM lfm_self_dupes JOIN ({TRUE_PAIRS}) USING (lfm_id)")
+    assert real <= max(5, 0.2 * twins), f"{real} of {twins} twins are real listens"
 
 
 def test_gate1_share(matched):
