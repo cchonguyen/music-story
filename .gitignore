@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# data: raw exports, databases, caches never enter the repo
+*.duckdb
+*.duckdb.wal
+*.sqlite
+build/
+fixtures/
+Streaming_History_*.json
+recenttracks-*.csv
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# site build output (W4)
+site/dist/
+site/.observablehq/cache/
+node_modules/
+
+.DS_Store
