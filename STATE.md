@@ -12,10 +12,10 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W4 site + deploy config | Sonnet | done (main), first try; Framework 1.13.4, 828 KB build |
 | W5 simple marts | Haiku | done (main), first try |
 | W6 trap marts | Opus | done (main), first try |
-| W7 dims `pipeline/dims.py` | Opus | todo, spec `specs/W7_dims.md` |
-| W8 sessions `sql/05_sessions.sql` | Sonnet | todo, spec `specs/W8_sessions.md` |
-| W9 genre `pipeline/genre.py` + csv | Sonnet | todo, spec `specs/W9_genre.md` |
-| W10 chapters + charts | Sonnet | todo, spec `specs/W10_charts.md` |
+| W7 dims `pipeline/dims.py` | Opus | in progress |
+| W8 sessions `sql/05_sessions.sql` | Sonnet | done (main); lead fixed test (listen_ms sum) |
+| W9 genre `pipeline/genre.py` + csv | Sonnet | done (main); lead fix (MB genre join), 222-row map |
+| W10 chapters + charts | Sonnet | in progress |
 
 Next:
 1. Charlie: `uv run python -m pipeline.enrich status` (hours), then `uv run python -m pipeline.enrich fetch`.
@@ -32,6 +32,7 @@ Decisions (window 1 review):
 - enr_local_duration reads stg_spotify; NULL `skipped` counts as not skipped (old exports).
 - Follow-up fetch items (Spotify artists, ISRC, Deezer) inherit their track's rank.
 - Retry-After > 600 s pauses that api for the run; failed items retry once on next `fetch`.
+- Open: genre map parents to review with Charlie (blues->jazz, hardcore->metal, reggae/dub/ska->world).
 - Open: platform `ios` is exact match; 4,104 of 12,036 real `other` plays are iOS/iPhone/iPad
   strings. Proposed W1 fix (case-insensitive ios/iphone/ipad -> ios + fixture update) before W8.
 
