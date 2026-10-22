@@ -12,18 +12,18 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W4 site + deploy config | Sonnet | done (main), first try; Framework 1.13.4, 828 KB build |
 | W5 simple marts | Haiku | done (main), first try |
 | W6 trap marts | Opus | done (main), first try |
-| W7 dims `pipeline/dims.py` | Opus | in progress |
+| W7 dims `pipeline/dims.py` | Opus | done (main); lead fixed fixture (no 404 on scenario tracks) |
 | W8 sessions `sql/05_sessions.sql` | Sonnet | done (main); lead fixed test (listen_ms sum) |
 | W9 genre `pipeline/genre.py` + csv | Sonnet | done (main); lead fix (MB genre join), 222-row map |
-| W10 chapters + charts | Sonnet | in progress |
+| W10 chapters + charts | Sonnet | done (main), first try; site_data trims top-N marts |
 
 Next:
 1. Charlie: `uv run python -m pipeline.enrich status` (hours), then `uv run python -m pipeline.enrich fetch`.
 2. Fixture site LIVE 2026-10-22 behind Access (team winter-wind-069c, allow charliechonguyen@gmail.com).
    Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
    Real-data deploy waits for W7-W9 (marts need dims, sessions, genre). Build with SITE_DB=build/music.duckdb.
-3. Wave 2 specs + tests ready (self-tested: fixture answers pass 65/66; the 1 is the >=100-row genre map).
-   W7-W10 can be built on the fixture now; real run `build_pipeline` (03-07) waits for the fetch.
+3. Wave 2 merged. `build_pipeline --fixtures` runs 00-07 end to end (fixture enr_* copied, never the real
+   cache). Next: when the fetch is done, `build_pipeline` (real), then site build with SITE_DB + deploy.
 
 Decisions (window 1 review):
 - Gate 1 fix (pass 3 + twins): see CLAUDE.md decision log and specs/W2_match.md rule 3.

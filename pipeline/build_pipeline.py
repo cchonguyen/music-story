@@ -69,6 +69,17 @@ def run_step(con: duckdb.DuckDBPyConnection, kind: str, target: str) -> None:
         con.execute(f.read_text())
 
 
+def fixture_enrichment(con: duckdb.DuckDBPyConnection) -> None:
+    """Step 03 for --fixtures: copy the fixture's parsed enr_* tables instead of reading CACHE_DIR."""
+    con.execute(f"ATTACH '{config.FIXTURE_DB}' AS fx (READ_ONLY)")
+    tables = [r[0] for r in con.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE database_name = 'fx' AND table_name LIKE 'enr_%'").fetchall()]
+    for t in tables:
+        con.execute(f"DELETE FROM {t}")
+        con.execute(f"INSERT INTO {t} SELECT * FROM fx.{t}")
+    con.execute("DETACH fx")
+
+
 def summary(con: duckdb.DuckDBPyConnection) -> None:
     for t in SUMMARY_TABLES:
         try:
@@ -109,7 +120,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"step {sid} ({target}) not built yet, owned by {packet}. Stopping.")
             break
         t0 = time.time()
-        run_step(con, kind, target)
+        if args.fixtures and target == "pipeline.enrich":
+            fixture_enrichment(con)  # never parse the real API cache into a fixture run
+        else:
+            run_step(con, kind, target)
         print(f"step {sid} {target} done in {time.time() - t0:.1f}s")
     summary(con)
     return 0

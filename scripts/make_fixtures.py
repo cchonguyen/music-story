@@ -883,10 +883,13 @@ def build_db(g, listens, sp_rows, sp_of_listen, lfm_rows, lfm_of_listen, dupe_ro
                    SELECT track_uri, max(ms_played), count(*) FROM stg_spotify
                    WHERE reason_end = 'trackdone' AND NOT skipped GROUP BY 1""")
     sp_tracks = []
+    sp_ = g.special  # scenario recordings never 404, so their acceptance checks stay reachable
+    scenario_rids = {sp_["binge"], sp_["djmix"], sp_["longtrack"], sp_["glass"], sp_["paper"], sp_["remaster"],
+                     *sp_["remix_recs"]}
     for rec in R.values():
         for uri, alb_id in rec.uris:
             al = AL[alb_id]
-            if r.random() < 0.02:
+            if r.random() < 0.02 and rec.rid not in scenario_rids:  # draw first: keeps the random stream intact
                 sp_tracks.append((uri, None, None, None, None, None, None, None, None, None, None, 404, now))
                 continue
             artists = [{"id": A[rec.artist].spotify_id, "name": A[rec.artist].name}]
