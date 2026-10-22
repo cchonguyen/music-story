@@ -1,8 +1,8 @@
 # STATE (keep under 500 tokens; update at the end of every packet)
 
-Wave: 1 (window 1 done, merged 2026-10-22). Waiting on Charlie's real-data run + fetch.
-Last gate: Gate 1 FAILED on real data, 89.57% (2026-10-22). Fix merged: pass 3 + twins (W2 rev).
-Gate 1 = W1+W2 on real data, >= 95% of 2023-26 scrobbles matched. Expected after fix ~96%.
+Wave: 1 (window 1 done 2026-10-22). Fetch running on Charlie's machine.
+Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
+Real: pass1 58159, pass2 450, pass3 2021, twins 1143; events both 60630 / spotify 69766 / lastfm 46120.
 
 | Packet | Tier | Status |
 |---|---|---|
@@ -14,14 +14,13 @@ Gate 1 = W1+W2 on real data, >= 95% of 2023-26 scrobbles matched. Expected after
 | W7 dims, W8 sessions, W9 taxonomy, W10 charts | | wave 2, after the fetch |
 
 Next:
-1. Charlie reruns `uv run python -m pipeline.build_pipeline --to 02`, pastes the `match:` line.
-   Spotify fetch may already run (`enrich fetch --api spotify`, unaffected by matching).
-   Then `enrich status` (hours estimate) and `enrich fetch` for the rest.
-2. Lead: if Gate 1 >= 95%, start window 2 (W4, W5, W6).
+1. Charlie: `uv run python -m pipeline.enrich status` (hours), then `uv run python -m pipeline.enrich fetch`.
+2. Lead: start window 2 (W4, W5, W6) on Charlie's OK.
 
 Decisions (window 1 review):
 - Gate 1 miss causes (real 2023-26, 2,660 unmatched): 986 double scrobbles 2-4 min apart;
-  ~700 same song on Spotify 3-60 min off (iPhone); ~1,100 other song playing (other app/device,
+  ~700 same song on Spotify 3-60 min off (all platforms; real pass 3: median 15 min,
+  95% scrobble before play); ~1,100 other song playing (other app/device,
   genuinely Last.fm-only). Fix: pass 3 (equal names, full listen, <= 1 h) then twins (<= 360 s,
   same full_norm -> lfm_self_dupes). Pass 3 is 337/339 correct vs fixture truth_links.
   Fixture precision now scored against truth_links (fx.match_links only holds pass 1/2 pairs).
@@ -30,8 +29,8 @@ Decisions (window 1 review):
 - enr_local_duration reads stg_spotify; NULL `skipped` counts as not skipped (old exports).
 - Follow-up fetch items (Spotify artists, ISRC, Deezer) inherit their track's rank.
 - Retry-After > 600 s pauses that api for the run; failed items retry once on next `fetch`.
-- Open: platform `ios` is exact match; older `iOS 12.x (...)` strings land in `other`.
-  Check the count after the real run before changing the rule.
+- Open: platform `ios` is exact match; 4,104 of 12,036 real `other` plays are iOS/iPhone/iPad
+  strings. Proposed W1 fix (case-insensitive ios/iphone/ipad -> ios + fixture update) before W8.
 
 Notes: fixture = ~47k plays, deterministic (seed 20260422). Spotify per-track fetch has no cap,
 ordered by play count.
