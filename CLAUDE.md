@@ -1,7 +1,8 @@
 # music-story
 
 19.5 years of Spotify + Last.fm listening history -> DuckDB pipeline -> private static story site
-(Observable Framework on Cloudflare Pages at music.charliechonguyen.com, behind Cloudflare Access).
+(Observable Framework on Cloudflare Workers static assets at music.charliechonguyen.com, behind
+Cloudflare Access).
 
 Start every session by reading `STATE.md` (current wave, packet status, next command). Nothing else
 is needed to resume.
@@ -27,3 +28,13 @@ is needed to resume.
 Spawn workers with the Agent tool, `isolation: "worktree"`, at most 2-3 at once, passing only the spec
 path. Worktrees branch from origin's default branch, so push main before a wave starts. Review each
 branch, merge, update STATE.md. A packet that fails its tests twice moves up one tier.
+
+## Deploy
+`cd site && npm run build`, then `npx wrangler deploy` from the repo root (`wrangler.jsonc`: assets-only,
+`workers_dev` and `preview_urls` off, custom domain route). The Access app must exist before any deploy.
+
+## Decision log
+- 2026-10-22: Host on Workers static assets, not Pages. Reason: Pages always serves a public
+  *.pages.dev copy, so privacy would need two Access apps; Workers can switch every extra URL off.
+  Rejected: Pages + second Access app.
+- 2026-10-22: Matcher pass 3 + twin removal after real Gate 1 was 89.57% (now 95.81%). See STATE.md.
