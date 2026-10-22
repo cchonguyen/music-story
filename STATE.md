@@ -12,12 +12,12 @@ Real: pass1 58159, pass2 450, pass3 2021, twins 1143; events both 60630 / spotif
 | W3 enrich clients | Sonnet | done (main), first try + lead fix (album key) |
 | W4 site + deploy config | Sonnet | in progress, spec `specs/W4_site.md` |
 | W5 simple marts | Haiku | done (main), first try |
-| W6 trap marts | Opus | in progress, spec `specs/W6_marts_trap.md` |
+| W6 trap marts | Opus | done (main), first try |
 | W7 dims, W8 sessions, W9 taxonomy, W10 charts | | wave 2, after the fetch |
 
 Next:
 1. Charlie: `uv run python -m pipeline.enrich status` (hours), then `uv run python -m pipeline.enrich fetch`.
-2. Lead: merge W4, W6. Then Charlie creates the Access app (steps from lead), lead deploys.
+2. Lead: merge W4. Then Charlie creates the Access app (steps from lead), lead deploys.
 
 Decisions (window 1 review):
 - Gate 1 miss causes (real 2023-26, 2,660 unmatched): 986 double scrobbles 2-4 min apart;
