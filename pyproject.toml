@@ -25,3 +25,4 @@ addopts = "-q"
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+extend-exclude = [".claude"]  # agent worktrees live here

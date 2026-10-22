@@ -116,3 +116,9 @@ WITH plat AS (
 SELECT a.session_id, a.started_at_utc, a.ended_at_utc, a.started_at_local, a.tz, a.n_plays, a.n_skips,
        a.listen_ms, p.platform_family, a.sources
 FROM agg a LEFT JOIN plat p ON p.session_id = a.session_id AND p.k = 1;
+
+DROP TABLE w8_base;
+DROP TABLE w8_country;
+DROP TABLE w8_tz;
+DROP TABLE w8_rows;
+DROP TABLE w8_facts;
