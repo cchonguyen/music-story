@@ -79,9 +79,15 @@ def test_session_ids_are_consistent(con):
 def test_session_attributes(con):
     on = "FROM sessions s JOIN fx.sessions f USING (started_at_utc)"
     assert scalar(con, f"SELECT count(*) {on}") >= 0.99 * scalar(con, "SELECT count(*) FROM fx.sessions")
-    for col in ("started_at_local", "tz", "n_plays", "n_skips", "platform_family", "sources", "ended_at_utc", "listen_ms"):
+    for col in ("started_at_local", "tz", "n_plays", "n_skips", "platform_family", "sources", "ended_at_utc"):
         share = agreement(con, f"SELECT s.{col} IS NOT DISTINCT FROM f.{col} {on}")
         assert share >= 0.99, f"sessions.{col}: {share:.4f}"
+    # listen_ms sums every row, so one Last.fm-only play resolved to another recording of the same
+    # key shifts the whole session: exact where every track agrees, >= 97% overall.
+    clean = ("NOT EXISTS (SELECT 1 FROM plays p JOIN fx.plays q USING (play_id) "
+             "WHERE p.session_id = s.session_id AND p.track_id <> q.track_id)")
+    assert agreement(con, f"SELECT s.listen_ms = f.listen_ms {on} WHERE {clean}") == 1.0
+    assert agreement(con, f"SELECT s.listen_ms = f.listen_ms {on}") >= 0.97
 
 
 def test_dst_and_travel(con):
