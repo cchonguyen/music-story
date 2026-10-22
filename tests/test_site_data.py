@@ -31,3 +31,8 @@ def test_site_db_env_is_honoured(tmp_path, monkeypatch):
     con.close()
     monkeypatch.setenv("SITE_DB", str(db))
     assert mart_rows("year") == [{"year": 2001, "plays": 5}]
+
+
+def test_site_filters_trim_large_marts(fixture_db_path):
+    assert max(r["rank"] for r in mart_rows("track_year")) == 50
+    assert min(r["window_plays"] for r in mart_rows("binge")) >= 15
