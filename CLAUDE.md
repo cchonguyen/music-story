@@ -22,6 +22,7 @@ is needed to resume.
 - `pipeline/` Python steps (`run(con)`), `pipeline/build_pipeline.py` runs them in order
 - `scripts/make_fixtures.py` seeded fixture -> `fixtures/raw/` + `dev_fixtures.duckdb` (per worktree)
 - `tests/golden/` hand-checked cases; `tests/test_*_fixture.py` packet acceptance tests
+- `site/` Observable Framework site; loaders call `pipeline/site_data.py` (SITE_DB, else fixture marts)
 - `specs/Wn_*.md` one spec per work packet; `.claude/agents/*-worker.md` tiered workers
 
 ## Delegation (lead = Opus session)
