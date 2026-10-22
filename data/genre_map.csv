@@ -1,0 +1,223 @@
+tag,style,parent_genre,is_genre
+electronic,electronic,electronic,true
+electronica,electronica,electronic,true
+ambient,ambient,electronic,true
+house,house,electronic,true
+deep house,deep house,electronic,true
+tech house,tech house,electronic,true
+progressive house,progressive house,electronic,true
+electro house,electro house,electronic,true
+techno,techno,electronic,true
+minimal techno,minimal techno,electronic,true
+dubstep,dubstep,electronic,true
+drum and bass,drum and bass,electronic,true
+trance,trance,electronic,true
+psytrance,psytrance,electronic,true
+idm,idm,electronic,true
+downtempo,downtempo,electronic,true
+chillout,chillout,electronic,true
+trip-hop,trip-hop,electronic,true
+synthwave,synthwave,electronic,true
+edm,edm,electronic,true
+breakbeat,breakbeat,electronic,true
+garage,garage,electronic,true
+uk garage,uk garage,electronic,true
+future bass,future bass,electronic,true
+electro,electro,electronic,true
+industrial,industrial,electronic,true
+dance,dance,electronic,true
+disco,disco,electronic,true
+lo-fi,lo-fi,electronic,true
+chillwave,chillwave,electronic,true
+vaporwave,vaporwave,electronic,true
+glitch,glitch,electronic,true
+hardstyle,hardstyle,electronic,true
+jungle,jungle,electronic,true
+dnb,drum and bass,electronic,true
+drum n bass,drum and bass,electronic,true
+drum & bass,drum and bass,electronic,true
+rock,rock,rock,true
+indie rock,indie rock,rock,true
+alternative rock,alternative rock,rock,true
+alternative,alternative,rock,true
+indie,indie,rock,true
+hard rock,hard rock,rock,true
+classic rock,classic rock,rock,true
+punk rock,punk rock,rock,true
+post-rock,post-rock,rock,true
+progressive rock,progressive rock,rock,true
+psychedelic rock,psychedelic rock,rock,true
+shoegaze,shoegaze,rock,true
+grunge,grunge,rock,true
+garage rock,garage rock,rock,true
+folk rock,folk rock,rock,true
+soft rock,soft rock,rock,true
+new wave,new wave,rock,true
+post-punk,post-punk,rock,true
+emo,emo,rock,true
+britpop,britpop,rock,true
+math rock,math rock,rock,true
+blues rock,blues rock,rock,true
+pop,pop,pop,true
+indie pop,indie pop,pop,true
+k-pop,k-pop,pop,true
+v-pop,v-pop,pop,true
+j-pop,j-pop,pop,true
+synthpop,synthpop,pop,true
+electropop,electropop,pop,true
+dance pop,dance pop,pop,true
+dream pop,dream pop,pop,true
+art pop,art pop,pop,true
+teen pop,teen pop,pop,true
+c-pop,c-pop,pop,true
+mandopop,mandopop,pop,true
+city pop,city pop,pop,true
+europop,europop,pop,true
+power pop,power pop,pop,true
+hip hop,hip hop,hip hop,true
+rap,rap,hip hop,true
+trap,trap,hip hop,true
+hip-hop,hip-hop,hip hop,true
+gangsta rap,gangsta rap,hip hop,true
+underground hip hop,underground hip hop,hip hop,true
+boom bap,boom bap,hip hop,true
+cloud rap,cloud rap,hip hop,true
+conscious hip hop,conscious hip hop,hip hop,true
+east coast hip hop,east coast hip hop,hip hop,true
+west coast rap,west coast rap,hip hop,true
+southern hip hop,southern hip hop,hip hop,true
+grime,grime,hip hop,true
+r&b,r&b,r&b,true
+rnb,rnb,r&b,true
+soul,soul,r&b,true
+neo-soul,neo-soul,r&b,true
+funk,funk,r&b,true
+contemporary r&b,contemporary r&b,r&b,true
+motown,motown,r&b,true
+jazz,jazz,jazz,true
+smooth jazz,smooth jazz,jazz,true
+bebop,bebop,jazz,true
+swing,swing,jazz,true
+jazz fusion,jazz fusion,jazz,true
+acid jazz,acid jazz,jazz,true
+nu jazz,nu jazz,jazz,true
+vocal jazz,vocal jazz,jazz,true
+blues,blues,jazz,true
+classical,classical,classical,true
+baroque,baroque,classical,true
+opera,opera,classical,true
+piano,piano,classical,true
+orchestral,orchestral,classical,true
+contemporary classical,contemporary classical,classical,true
+neoclassical,neoclassical,classical,true
+instrumental,instrumental,classical,true
+folk,folk,folk,true
+singer-songwriter,singer-songwriter,folk,true
+indie folk,indie folk,folk,true
+acoustic,acoustic,folk,true
+americana,americana,folk,true
+bluegrass,bluegrass,folk,true
+metal,metal,metal,true
+heavy metal,heavy metal,metal,true
+death metal,death metal,metal,true
+black metal,black metal,metal,true
+thrash metal,thrash metal,metal,true
+metalcore,metalcore,metal,true
+doom metal,doom metal,metal,true
+power metal,power metal,metal,true
+nu metal,nu metal,metal,true
+progressive metal,progressive metal,metal,true
+hardcore,hardcore,metal,true
+punk,punk,rock,true
+pop punk,pop punk,rock,true
+country,country,country,true
+country pop,country pop,country,true
+alt-country,alt-country,country,true
+outlaw country,outlaw country,country,true
+latin,latin,latin,true
+reggaeton,reggaeton,latin,true
+salsa,salsa,latin,true
+bachata,bachata,latin,true
+bossa nova,bossa nova,latin,true
+latin pop,latin pop,latin,true
+cumbia,cumbia,latin,true
+latin trap,latin trap,latin,true
+samba,samba,latin,true
+merengue,merengue,latin,true
+world,world,world,true
+reggae,reggae,world,true
+afrobeat,afrobeat,world,true
+ska,ska,world,true
+dancehall,dancehall,world,true
+celtic,celtic,world,true
+flamenco,flamenco,world,true
+world music,world music,world,true
+dub,dub,world,true
+afrobeats,afrobeats,world,true
+bollywood,bollywood,world,true
+soundtrack,soundtrack,soundtrack,true
+score,score,soundtrack,true
+video game music,video game music,soundtrack,true
+anime,anime,soundtrack,true
+musical,musical,soundtrack,true
+ost,ost,soundtrack,true
+seen live,,,false
+favorites,,,false
+favourite,,,false
+favourites,,,false
+favorite,,,false
+love,,,false
+awesome,,,false
+female vocalists,,,false
+male vocalists,,,false
+british,,,false
+american,,,false
+under 2000 listeners,,,false
+beautiful,,,false
+good,,,false
+cool,,,false
+best,,,false
+amazing,,,false
+chill,,,false
+mellow,,,false
+relax,,,false
+party,,,false
+sad,,,false
+happy,,,false
+energetic,,,false
+catchy,,,false
+epic,,,false
+guilty pleasure,,,false
+my music,,,false
+all,,,false
+male vocalist,,,false
+female vocalist,,,false
+usa,,,false
+uk,,,false
+korean,,,false
+vietnamese,,,false
+japanese,,,false
+french,,,false
+german,,,false
+swedish,,,false
+canadian,,,false
+australian,,,false
+00s,,,false
+spotify,,,false
+albums i own,,,false
+wish list,,,false
+favorite songs,,,false
+the best,,,false
+sexy,,,false
+heard on pandora,,,false
+check out,,,false
+vocal,,,false
+singer,,,false
+love at first listen,,,false
+cover,,,false
+covers,,,false
+legend,,,false
+awesome songs,,,false
+2000s,,,false
+80s,,,false
+90s,,,false
