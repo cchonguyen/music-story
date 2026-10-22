@@ -1,6 +1,6 @@
 # STATE (keep under 500 tokens; update at the end of every packet)
 
-Wave: 1 (window 1 done 2026-10-22). Fetch running on Charlie's machine.
+Wave: 1 done (windows 1+2, 2026-10-22). Fetch running on Charlie's machine.
 Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 Real: pass1 58159, pass2 450, pass3 2021, twins 1143; events both 60630 / spotify 69766 / lastfm 46120.
 
@@ -17,9 +17,10 @@ Real: pass1 58159, pass2 450, pass3 2021, twins 1143; events both 60630 / spotif
 
 Next:
 1. Charlie: `uv run python -m pipeline.enrich status` (hours), then `uv run python -m pipeline.enrich fetch`.
-2. Charlie creates the Access app (Zero Trust, self-hosted, music.charliechonguyen.com, only his email).
-   Then lead deploys the fixture site (SITE_DB unset = fixture marts) to check the lock.
-   Real-data deploy waits for W7-W9 (marts need dims, sessions, genre). Set SITE_DB=build/music.duckdb.
+2. Fixture site LIVE 2026-10-22 behind Access (team winter-wind-069c, allow charliechonguyen@gmail.com).
+   Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
+   Real-data deploy waits for W7-W9 (marts need dims, sessions, genre). Build with SITE_DB=build/music.duckdb.
+3. Wave 2 (W7 dims, W8 sessions, W9 taxonomy, W10 charts) after the fetch finishes.
 
 Decisions (window 1 review):
 - Gate 1 miss causes (real 2023-26, 2,660 unmatched): 986 double scrobbles 2-4 min apart;
