@@ -7,6 +7,11 @@ Cloudflare Access).
 Start every session by reading `STATE.md` (current wave, packet status, next command). Nothing else
 is needed to resume.
 
+Before planning or designing any architecture or implementation change, read `docs/PROJECT.md`
+(data facts, pipeline, enrichment and quota strategy, decision log, open items) and follow its
+decisions or say why one should change. When a change affects any of those, update `docs/PROJECT.md`
+in the same commit (decision log row, open items, affected section) next to STATE.md.
+
 ## Rules
 - Raw exports and databases never enter the repo or a prompt. Look at data through counts,
   DESCRIBE or SUMMARIZE; at most 10 sample rows, and only from `dev_fixtures.duckdb`.
