@@ -339,10 +339,37 @@ def test_play_count_floor_skips_rare_tracks_without_dropping_them():
     assert cache.next_item("spotify")[1] == "rare"
 
 
-def test_spotify_artists_wait_for_every_track():
+def test_spotify_artists_are_held_by_default():
     cache = Cache(":memory:")
     cache.enqueue([("spotify", "artists", "ar1", 1), ("spotify", "tracks", "t9", 9)])
+    cache.put("spotify", "tracks", "t9", 404, "{}")
+    assert cache.next_item("spotify") is None and cache.pending(["spotify"]) == 0
+    assert cache.held_counts() == {("spotify", "artists"): 1} and cache.over_limit() == {}
+
+
+def test_spotify_artists_on_request_wait_for_every_track():
+    cache = Cache(":memory:", held=set())
+    cache.enqueue([("spotify", "artists", "ar1", 1), ("spotify", "tracks", "t9", 9)])
     assert cache.next_item("spotify") == ("tracks", "t9", 9)
+    cache.put("spotify", "tracks", "t9", 404, "{}")
+    assert cache.next_item("spotify") == ("artists", "ar1", 1)
+
+
+def test_zero_budget_never_stops_but_still_counts():
+    cache = Cache(":memory:")
+    f, _ = make_fetcher(lambda r: httpx.Response(200, json={}), cache, api="spotify", budget=None)
+    for k in ("a", "b", "c"):
+        f.fetch("tracks", k, build_request("spotify", "tracks", k))
+    assert cache.requests_in_window("spotify")[0] == 3
+
+
+def test_cli_passes_spotify_flags(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(enrich, "fetch", lambda apis, mm, **kw: seen.update(kw) or 0)
+    enrich.main(["fetch", "--spotify-min-plays", "5", "--spotify-budget", "0", "--spotify-artists"])
+    assert seen == {"spotify_min_plays": 5, "wait": False, "spotify_budget": 0, "spotify_artists": True}
+    enrich.main(["fetch"])
+    assert seen["spotify_min_plays"] == 3 and seen["spotify_budget"] == 500 and not seen["spotify_artists"]
 
 
 def test_old_cache_gains_pause_reason(tmp_path):
