@@ -18,9 +18,11 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W10 chapters + charts | Sonnet | done (main), first try; site_data trims top-N marts |
 
 Next:
-1. Fetch 2026-10-23: Last.fm done. Spotify locked out 24 h after ~600 req at 3 req/s (until Fri 14:44 PT);
-   now 1 req/s and lockouts stored in api_pause and waited out. MusicBrainz + Deezer never ran (only
-   `--api spotify` runs). Charlie runs `caffeinate -i uv run python -m pipeline.enrich fetch` (all apis).
+1. Fetch 2026-10-23: Last.fm done. Spotify locked out after ~600 req (until Fri 23 Oct 14:44 PT).
+   Dev-mode quota is a per-account request count, so fetch now caps Spotify at SPOTIFY_DAILY_BUDGET
+   (500/rolling 24 h), pauses on QUOTA_EXCEEDED, and only takes tracks with 5+ plays (6,064 URIs,
+   64% of plays; `--spotify-min-plays`). Deezer + MB isrc only get work from Spotify ISRCs. fetch
+   exits when only paused apis remain (`--wait` sits it out). Charlie reruns `fetch` daily.
 2. Fixture site LIVE 2026-10-22 behind Access (team winter-wind-069c, allow charliechonguyen@gmail.com).
    Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
    Real-data deploy: build with SITE_DB=build/music.duckdb (fixture otherwise).
@@ -33,10 +35,11 @@ Decisions (window 1 review):
   remaster noise off + text rules). W7/W9 must use it for album_norm.
 - enr_local_duration reads stg_spotify; NULL `skipped` counts as not skipped (old exports).
 - Follow-up fetch items (Spotify artists, ISRC, Deezer) inherit their track's rank.
-- Retry-After > 600 s pauses that api for the run; failed items retry once on next `fetch`.
+- Pauses (Retry-After > 600 s, QUOTA_EXCEEDED, budget) live in api_pause; failed items retry once on next `fetch`.
+- Open: PR 2 = MB search for Spotify tracks under the floor + dim_album fallback key (needs lead).
 - Open: genre map parents to review with Charlie (blues->jazz, hardcore->metal, reggae/dub/ska->world).
 - Open: platform `ios` is exact match; 4,104 of 12,036 real `other` plays are iOS/iPhone/iPad
   strings. Proposed W1 fix (case-insensitive ios/iphone/ipad -> ios + fixture update) before W8.
 
-Notes: fixture = ~47k plays, deterministic (seed 20260422). Spotify per-track fetch has no cap,
-ordered by play count.
+Notes: fixture = ~47k plays, deterministic (seed 20260422). Spotify per-track fetch ordered by play
+count, artists after all tracks.

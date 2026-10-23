@@ -60,6 +60,14 @@ def seed_queue(con: duckdb.DuckDBPyConnection, cache: Cache, apis: set[str]) -> 
     return offered
 
 
+def spotify_cap(con: duckdb.DuckDBPyConnection, min_plays: int) -> int:
+    """Highest Spotify track priority with at least `min_plays` plays. Ranks follow play count, so
+    every URI within the cap has min_plays or more; follow-ups inherit their track's rank."""
+    return con.execute("""SELECT count(*) FROM (
+        SELECT split_part(track_uri, ':', 3) FROM events WHERE track_uri LIKE 'spotify:track:%'
+        GROUP BY 1 HAVING count(*) >= ?)""", [min_plays]).fetchone()[0]
+
+
 def load_names(con: duckdb.DuckDBPyConnection) -> dict:
     """Most common raw spellings per norm key, used to build Last.fm / MusicBrainz requests."""
     track = {
