@@ -1,7 +1,12 @@
 """Build step 03 and the overnight fetch.
 
     uv run python -m pipeline.enrich fetch [--api spotify,musicbrainz,lastfm,deezer] [--max-minutes N]
+                                           [--spotify-min-plays N] [--wait]
     uv run python -m pipeline.enrich status
+
+Spotify spends at most SPOTIFY_DAILY_BUDGET requests (default 500) per rolling 24 h, and only on
+tracks with --spotify-min-plays plays or more (default 5). When every api left is paused, fetch
+exits and prints when to rerun; --wait sits it out instead.
 
 `run(con)` only parses the HTTP cache into the enr_* tables; it never touches the network.
 `fetch` is resumable: the queue lives in the cache database. It prints counts, never bodies.
@@ -21,6 +26,7 @@ import httpx
 from pipeline import config
 from pipeline.enrich_cache import Cache
 from pipeline.enrich_clients import (
+    BUDGETS,
     INTERVALS,
     TIMEOUT,
     Fetcher,
@@ -29,9 +35,10 @@ from pipeline.enrich_clients import (
     build_request,
 )
 from pipeline.enrich_parse import local_durations, parse_cache
-from pipeline.enrich_queue import load_names, seed_queue
+from pipeline.enrich_queue import load_names, seed_queue, spotify_cap
 
 ALL_APIS = ["spotify", "musicbrainz", "lastfm", "deezer"]
+SPOTIFY_MIN_PLAYS = 5
 
 
 def run(con: duckdb.DuckDBPyConnection, cache_path=None) -> None:
@@ -66,7 +73,8 @@ class Worker(threading.Thread):
                 if not self.paused:
                     self.paused = True
                     resume = datetime.now().astimezone() + timedelta(seconds=wait)
-                    print(f"{self.api}: locked out by the api, waiting until {resume:%a %H:%M} local "
+                    why = cache.pause_reason(self.api) or "rate limit"
+                    print(f"{self.api}: paused ({why}) until {resume:%a %H:%M} local "
                           "(no requests until then)", flush=True)
                 self.idle = True
                 self.stop_event.wait(min(wait, 60.0))
@@ -85,7 +93,7 @@ class Worker(threading.Thread):
             try:
                 self.fetcher.fetch(endpoint, key, req, priority)
             except RateLimited as e:
-                cache.set_pause(self.api, e.seconds)  # remembered across runs; the loop above waits
+                cache.set_pause(self.api, e.seconds, e.reason)  # remembered across runs; the loop above waits
                 self.note = str(e)
                 continue
             except Exception as e:  # noqa: BLE001 - keep the overnight job alive; record and move on
@@ -128,7 +136,8 @@ def progress_line(cache: Cache, started: float) -> str:
     return f"[{(time.monotonic() - started) / 60:.0f} min] " + "; ".join(parts)
 
 
-def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_s: float = 60.0) -> int:
+def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_s: float = 60.0,
+          spotify_min_plays: int = SPOTIFY_MIN_PLAYS, wait: bool = False) -> int:
     if not config.MUSIC_DB or not config.MUSIC_DB.exists():
         print("MUSIC_DB not found. Run build_pipeline --to 02 first.", file=sys.stderr)
         return 2
@@ -144,6 +153,13 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
     if not fetchers:
         return 2
     offered = seed_queue(con, cache, set(fetchers))
+    if "spotify" in fetchers:
+        if spotify_min_plays > 1:
+            cap = spotify_cap(con, spotify_min_plays)
+            cache.set_limit("spotify", cap, f"min_plays={spotify_min_plays}")
+            print(f"spotify: tracks with {spotify_min_plays}+ plays only (priority <= {cap})")
+        else:
+            cache.set_limit("spotify", None)
     names = load_names(con)
     con.close()
     print("seeded " + ", ".join(f"{a}.{e} {n}" for (a, e), n in offered.items()))
@@ -163,6 +179,13 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
                 break
             if not live:
                 break
+            paused = [w for w in workers if w.paused]
+            if not wait and paused and all(w.idle for w in workers):
+                for w in paused:
+                    resume = datetime.now().astimezone() + timedelta(seconds=cache.pause_left(w.api))
+                    print(f"{w.api}: paused ({cache.pause_reason(w.api) or 'rate limit'}); "
+                          f"rerun fetch after {resume:%a %H:%M} local")
+                break
             if max_minutes is not None and elapsed_min >= max_minutes:
                 print("max-minutes reached, stopping")
                 break
@@ -175,7 +198,7 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
     for w in workers:
         w.join(timeout=30)
         if w.note:
-            print(f"{w.api}: {w.note}; stopped for this run")
+            print(f"{w.api}: last pause: {w.note}")
     print(progress_line(cache, started))
     cache.close()
     return 0
@@ -189,14 +212,26 @@ def status(cache_path=None) -> int:
     for api, endpoint, done, queued, failed in rows:
         print(f"{api:<12} {endpoint:<20} {done:>8} {queued:>8} {failed:>7}")
         queued_by_api[api] = queued_by_api.get(api, 0) + queued
-    print("estimated hours left (queued / rate, ignores items queued by later responses):")
+    over = cache.over_limit()
+    for api, n in over.items():
+        cap, note = cache.limit(api) or (None, None)
+        print(f"{api}: {n} queued rows past the floor ({note}, priority > {cap}); not fetched")
+    for api in BUDGETS:
+        if api in queued_by_api:
+            used, _ = cache.requests_in_window(api)
+            print(f"{api}: {used} of {BUDGETS[api]} requests used in the last 24 h")
+    print("estimated time left (eligible queue / rate or daily budget, ignores items queued by later responses):")
     for api, n in queued_by_api.items():
+        n -= over.get(api, 0)
         wait = cache.pause_left(api)
         locked = ""
         if wait > 0:
             resume = datetime.now().astimezone() + timedelta(seconds=wait)
-            locked = f"  (locked out until {resume:%a %H:%M} local, then)"
-        print(f"  {api:<12} {n * INTERVALS[api] / 3600:6.1f} h{locked}")
+            locked = f"  (paused: {cache.pause_reason(api) or 'rate limit'} until {resume:%a %H:%M} local, then)"
+        if api in BUDGETS:
+            print(f"  {api:<12} {n / BUDGETS[api]:6.1f} days{locked}")
+        else:
+            print(f"  {api:<12} {n * INTERVALS[api] / 3600:6.1f} h{locked}")
     cache.close()
     return 0
 
@@ -207,6 +242,9 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("fetch", help="work the queue, resumable")
     f.add_argument("--api", default=",".join(ALL_APIS), help="comma-separated subset")
     f.add_argument("--max-minutes", type=float, default=None)
+    f.add_argument("--spotify-min-plays", type=int, default=SPOTIFY_MIN_PLAYS,
+                   help="only fetch Spotify tracks with this many plays (1 = all)")
+    f.add_argument("--wait", action="store_true", help="sit out pauses instead of exiting")
     sub.add_parser("status", help="done / queued / failed per api and endpoint")
     args = ap.parse_args(argv)
     if args.cmd == "status":
@@ -215,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     bad = [a for a in apis if a not in ALL_APIS]
     if bad:
         ap.error(f"unknown api: {','.join(bad)}")
-    return fetch(apis, args.max_minutes)
+    return fetch(apis, args.max_minutes, spotify_min_plays=args.spotify_min_plays, wait=args.wait)
 
 
 if __name__ == "__main__":
