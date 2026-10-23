@@ -18,7 +18,9 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W10 chapters + charts | Sonnet | done (main), first try; site_data trims top-N marts |
 
 Next:
-1. Charlie: `uv run python -m pipeline.enrich status` (hours), then `uv run python -m pipeline.enrich fetch`.
+1. Fetch 2026-10-23: Last.fm done. Spotify locked out 24 h after ~600 req at 3 req/s (until Fri 14:44 PT);
+   now 1 req/s and lockouts stored in api_pause and waited out. MusicBrainz + Deezer never ran (only
+   `--api spotify` runs). Charlie runs `caffeinate -i uv run python -m pipeline.enrich fetch` (all apis).
 2. Fixture site LIVE 2026-10-22 behind Access (team winter-wind-069c, allow charliechonguyen@gmail.com).
    Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
    Real-data deploy: build with SITE_DB=build/music.duckdb (fixture otherwise).

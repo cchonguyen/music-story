@@ -17,9 +17,10 @@ import httpx
 from pipeline.enrich_cache import MAX_ATTEMPTS, Cache, QueueItem
 
 TIMEOUT = httpx.Timeout(20.0, connect=10.0)
-MAX_RETRY_AFTER = 600.0  # a longer lockout than this stops the api for this run
+MAX_RETRY_AFTER = 600.0  # a longer lockout is stored in api_pause and waited out without requests
 # Minimum seconds between requests per api.
-INTERVALS = {"spotify": 1 / 3, "musicbrainz": 1.05, "lastfm": 0.25, "deezer": 0.11}
+# Spotify: 3 req/s drew a 24 h lockout after ~600 requests (2026-10-22), so 1 req/s.
+INTERVALS = {"spotify": 1.0, "musicbrainz": 1.05, "lastfm": 0.25, "deezer": 0.11}
 LASTFM_TRANSIENT_ERRORS = {8, 11, 16, 29}
 
 

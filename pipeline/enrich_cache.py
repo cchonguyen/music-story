@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from collections.abc import Iterable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pipeline import config
@@ -39,6 +39,21 @@ class Cache:
         with self.lock:
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.executescript(config.CACHE_SCHEMA_SQL.read_text())
+
+    # ---- long lockouts ------------------------------------------------------
+    def set_pause(self, api: str, seconds: float) -> None:
+        until = (datetime.now(UTC) + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%S")
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO api_pause(api, until_utc) VALUES (?, ?)", (api, until))
+
+    def pause_left(self, api: str) -> float:
+        """Seconds until `api` may be asked again; 0 when it is not locked out."""
+        with self.lock:
+            row = self.db.execute("SELECT until_utc FROM api_pause WHERE api = ?", (api,)).fetchone()
+        if row is None:
+            return 0.0
+        until = datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
+        return max(0.0, (until - datetime.now(UTC)).total_seconds())
 
     def close(self) -> None:
         with self.lock:
