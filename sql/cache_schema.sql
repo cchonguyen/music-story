@@ -25,9 +25,27 @@ CREATE TABLE IF NOT EXISTS fetch_queue (
 );
 CREATE INDEX IF NOT EXISTS fetch_queue_order ON fetch_queue (api, priority);
 
--- Long rate-limit lockouts (Retry-After over 10 min) per api. Workers wait them out and reruns
--- send nothing until then, because asking again can extend the lockout.
+-- Long rate-limit lockouts per api: Retry-After over 10 min, a QUOTA_EXCEEDED body, or our own
+-- daily budget running out. Reruns send nothing until then, because asking again can extend
+-- the lockout. Caches made before `reason` existed get it from Cache.__init__.
 CREATE TABLE IF NOT EXISTS api_pause (
     api        TEXT PRIMARY KEY,
-    until_utc  TEXT NOT NULL      -- ISO 8601 UTC
+    until_utc  TEXT NOT NULL,     -- ISO 8601 UTC
+    reason     TEXT               -- e.g. 'QUOTA_EXCEEDED', 'Retry-After', 'budget'
+);
+
+-- One row per request actually sent to an api with a daily budget (Spotify), for the rolling
+-- 24 h count. Rows older than two days are pruned on insert.
+CREATE TABLE IF NOT EXISTS request_log (
+    api     TEXT NOT NULL,
+    at_utc  TEXT NOT NULL         -- ISO 8601 UTC
+);
+CREATE INDEX IF NOT EXISTS request_log_api_at ON request_log (api, at_utc);
+
+-- Highest queue priority an api may take (a play-count floor). Rows past it stay queued but
+-- are not picked, so moving the floor later needs no reseed. No row = no limit.
+CREATE TABLE IF NOT EXISTS api_limit (
+    api           TEXT PRIMARY KEY,
+    max_priority  INTEGER NOT NULL,
+    note          TEXT            -- how the cap was chosen, e.g. 'min_plays=3'
 );
