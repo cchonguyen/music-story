@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from pipeline.enrich_cache import MAX_ATTEMPTS, Cache, QueueItem
+from pipeline.normalize import normalize_artist, normalize_title
 
 TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 MAX_RETRY_AFTER = 600.0  # a longer lockout is stored in api_pause and waited out without requests
@@ -31,6 +32,7 @@ LOGGED = {"spotify"}
 QUOTA_PAUSE = 86400.0      # QUOTA_EXCEEDED without a usable Retry-After
 NO_RETRY_AFTER_PAUSE = {"spotify": 3600.0}  # a bare 429 from these apis pauses instead of retrying
 LASTFM_TRANSIENT_ERRORS = {8, 11, 16, 29}
+DEEZER_TRANSIENT_ERRORS = {4, 700}  # quota (50 requests / 5 s), service busy
 
 
 class RateLimited(Exception):
@@ -68,6 +70,10 @@ class Result:
 
 
 # ---- request builders -------------------------------------------------------
+def _unquote(s: str) -> str:
+    return s.replace('"', " ")
+
+
 def _lucene(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -102,6 +108,12 @@ def build_request(api: str, endpoint: str, key: str, names: dict | None = None,
             params["artist"] = names.get("artist", {}).get(key, key)
         return Request("https://ws.audioscrobbler.com/2.0/", params)
     if api == "deezer":
+        if endpoint == "search":
+            artist, title = names.get("track", {}).get(key, tuple(key.split("::", 1)))
+            q = f'artist:"{_unquote(artist)}" track:"{_unquote(title)}"'
+            return Request("https://api.deezer.com/search", {"q": q, "limit": 10})
+        if endpoint == "id":
+            return Request(f"https://api.deezer.com/track/{key}")
         return Request(f"https://api.deezer.com/track/isrc:{key}")
     raise ValueError(f"unknown request {api}/{endpoint}")
 
@@ -112,6 +124,20 @@ def _json(body: str | None):
         return json.loads(body) if body else None
     except ValueError:
         return None
+
+
+def deezer_hit(key: str, data) -> dict | None:
+    """First Deezer search hit whose normalised artist and title equal 'artist_norm::full_norm'."""
+    artist_norm, _, full_norm = key.partition("::")
+    hits = data.get("data") if isinstance(data, dict) else None
+    for hit in hits if isinstance(hits, list) else []:
+        if not isinstance(hit, dict) or not hit.get("id"):
+            continue
+        if normalize_artist((hit.get("artist") or {}).get("name")) != artist_norm:
+            continue
+        if normalize_title(hit.get("title"))[0] == full_norm:
+            return hit
+    return None
 
 
 def cascade(api: str, endpoint: str, key: str, status: int, body: str | None,
@@ -131,6 +157,13 @@ def cascade(api: str, endpoint: str, key: str, status: int, body: str | None,
         if isrc:
             out.append(("musicbrainz", "isrc", isrc, priority))
             out.append(("deezer", "track", isrc, priority))
+    elif api == "deezer" and endpoint == "search":
+        hit = deezer_hit(key, data)
+        if hit:
+            out.append(("deezer", "id", str(hit["id"]), priority))
+    elif api == "deezer" and endpoint == "id":
+        if data.get("isrc") and not data.get("error"):
+            out.append(("musicbrainz", "isrc", data["isrc"], priority))
     elif api == "musicbrainz" and endpoint in ("isrc", "recording"):
         recs = data.get("recordings") if endpoint == "isrc" else [data]
         for rec in (recs or [])[:1]:
@@ -207,10 +240,15 @@ class Fetcher:
             self.cache.log_request(self.api)
 
     def _transient_body(self, body: str) -> bool:
-        if self.api != "lastfm":
+        if self.api not in ("lastfm", "deezer"):
             return False
         data = _json(body)
-        return isinstance(data, dict) and data.get("error") in LASTFM_TRANSIENT_ERRORS
+        if not isinstance(data, dict):
+            return False
+        if self.api == "lastfm":
+            return data.get("error") in LASTFM_TRANSIENT_ERRORS
+        err = data.get("error")
+        return isinstance(err, dict) and err.get("code") in DEEZER_TRANSIENT_ERRORS
 
     def fetch(self, endpoint: str, key: str, req: Request, priority: int = 0) -> Result:
         hit = self.cache.get(self.api, endpoint, key)

@@ -13,7 +13,7 @@ from helpers import fresh_db, scalar
 
 from pipeline import enrich
 from pipeline.enrich_cache import Cache
-from pipeline.enrich_clients import Fetcher, RateLimited, build_request
+from pipeline.enrich_clients import Fetcher, RateLimited, build_request, cascade
 from pipeline.enrich_queue import seed_queue, spotify_cap
 
 
@@ -406,3 +406,68 @@ def test_fetch_exits_when_only_paused_apis_remain(tmp_path, monkeypatch, capsys)
     assert time.monotonic() - started < 30
     assert "paused (QUOTA_EXCEEDED); rerun fetch after" in out
     assert "priority <= 2" in out
+
+
+# ---- tail lookups by artist/title: Deezer search -> /track/{id} -> MusicBrainz ISRC ------------
+DZ_SEARCH = {"data": [
+    {"id": 11, "title": "Other Song", "artist": {"name": "A"}},
+    {"id": 12, "title": "Song (Radio Edit)", "artist": {"name": "A"}},
+    {"id": 13, "title": "Song", "artist": {"name": "A"}, "album": {"id": 5, "title": "Alb"}, "duration": 200},
+]}
+DZ_TRACK = {"id": 13, "isrc": "USDZ1", "bpm": 120, "gain": -8.1, "duration": 200, "release_date": "2004-02-01",
+            "album": {"id": 5, "title": "Alb"}}
+
+
+def test_deezer_search_request_and_cascade():
+    req = build_request("deezer", "search", "a::song", {"track": {"a::song": ("A", 'So"ng')}})
+    assert req.url == "https://api.deezer.com/search" and req.params["q"] == 'artist:"A" track:"So ng"'
+    assert build_request("deezer", "id", "13").url == "https://api.deezer.com/track/13"
+    assert cascade("deezer", "search", "a::song", 200, json.dumps(DZ_SEARCH), 7) == [("deezer", "id", "13", 7)]
+    assert cascade("deezer", "search", "b::song", 200, json.dumps(DZ_SEARCH), 7) == []
+    assert cascade("deezer", "id", "13", 200, json.dumps(DZ_TRACK), 7) == [("musicbrainz", "isrc", "USDZ1", 7)]
+    assert cascade("deezer", "id", "13", 200, json.dumps({"error": {"code": 800}}), 7) == []
+
+
+def test_deezer_quota_error_is_retried():
+    cache = Cache(":memory:")
+    seen = []
+
+    def handler(req):
+        seen.append(1)
+        if len(seen) == 1:
+            return httpx.Response(200, json={"error": {"type": "Exception", "code": 4}})
+        return httpx.Response(200, json=DZ_TRACK)
+
+    f, _ = make_fetcher(handler, cache)
+    assert f.fetch("id", "13", build_request("deezer", "id", "13")).status == 200 and len(seen) == 2
+
+
+def test_tail_under_the_floor_is_queued_for_search():
+    con = _events_db()  # popular 3 plays, middle 2, rare 1 (all Spotify), plus two Last.fm-only keys
+    cache = Cache(":memory:")
+    seed_queue(con, cache, {"spotify", "musicbrainz", "deezer"}, spotify_min_plays=3)
+    rows = {(a, e, k) for a, e, k in cache.db.execute(
+        "SELECT api, endpoint, key FROM fetch_queue WHERE endpoint = 'search'")}
+    assert rows == {("musicbrainz", "search", "a::mid"), ("musicbrainz", "search", "b::rare"),
+                    ("musicbrainz", "search", "c::lfm2"), ("deezer", "search", "a::mid"),
+                    ("deezer", "search", "b::rare"), ("deezer", "search", "c::lfm"),
+                    ("deezer", "search", "c::lfm2")}
+    order = []
+    while (item := cache.next_item("deezer")):
+        order.append(item[1])
+        cache.put("deezer", item[0], item[1], 404, "{}")
+    assert order[:2] == ["c::lfm", "c::lfm2"]  # Last.fm-only roots before the tail
+
+
+def test_parse_builds_deezer_matches(tmp_path):
+    cache = Cache(tmp_path / "c.sqlite")
+    put(cache, "deezer", "search", "a::song", 200, DZ_SEARCH)
+    put(cache, "deezer", "id", "13", 200, DZ_TRACK)
+    put(cache, "deezer", "search", "b::none", 200, {"data": []})
+    con = fresh_db()
+    enrich.run(con, tmp_path / "c.sqlite")
+    rows = con.execute("SELECT lookup_key, deezer_id, isrc, album_name, release_date, duration_ms, http_status "
+                       "FROM enr_deezer_match ORDER BY 1").fetchall()
+    assert rows == [("a::song", 13, "USDZ1", "Alb", "2004-02-01", 200000, 200),
+                    ("b::none", None, None, None, None, None, 404)]
+    assert con.execute("SELECT deezer_id, bpm FROM enr_deezer_track WHERE isrc = 'USDZ1'").fetchone() == (13, 120)

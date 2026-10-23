@@ -9,6 +9,7 @@ from typing import Any
 import duckdb
 
 from pipeline.enrich_cache import Cache
+from pipeline.enrich_clients import deezer_hit
 
 
 def _ts(iso: str) -> datetime:
@@ -168,25 +169,63 @@ def _lastfm_info(cache: Cache) -> list[tuple]:
 
 
 # ---- Deezer -------------------------------------------------------------------
-def _deezer(cache: Cache) -> list[tuple]:
+def _deezer_body(status: int, body: str | None) -> tuple[int, dict | None]:
+    d = _obj(body) if status == 200 else None
+    if d and d.get("error"):
+        return 404, None
+    return status, d
+
+
+def _deezer_row(key: str, status: int, d: dict | None, at: str) -> tuple:
+    if not d:
+        return (key, None, None, None, None, None, status, _ts(at))
+    dur = _int(d.get("duration"))
+    bpm = d.get("bpm")
+    return (key, d.get("id"), bpm if bpm else None, d.get("gain"), dur * 1000 if dur else None,
+            d.get("release_date"), status, _ts(at))
+
+
+def _deezer(cache: Cache, by_id: dict[str, tuple[int, dict | None, str]]) -> list[tuple]:
+    """enr_deezer_track by ISRC: lookups by ISRC, plus tracks reached through search."""
     out = []
     for key, status, body, at in cache.rows("deezer", "track"):
-        d = _obj(body) if status == 200 else None
-        if d and d.get("error"):
-            status, d = 404, None
-        if not d:
-            out.append((key, None, None, None, None, None, status, _ts(at)))
+        status, d = _deezer_body(status, body)
+        out.append(_deezer_row(key, status, d, at))
+    seen = {r[0] for r in out}
+    for status, d, at in by_id.values():
+        if d and d.get("isrc") and d["isrc"] not in seen:
+            seen.add(d["isrc"])
+            out.append(_deezer_row(d["isrc"], status, d, at))
+    return out
+
+
+def _deezer_ids(cache: Cache) -> dict[str, tuple[int, dict | None, str]]:
+    out = {}
+    for key, status, body, at in cache.rows("deezer", "id"):
+        status, d = _deezer_body(status, body)
+        out[key] = (status, d, at)
+    return out
+
+
+def _deezer_matches(cache: Cache, by_id: dict[str, tuple[int, dict | None, str]]) -> list[tuple]:
+    out = []
+    for key, status, body, at in cache.rows("deezer", "search"):
+        status, d = _deezer_body(status, body)
+        hit = deezer_hit(key, d) if d else None
+        if not hit:
+            out.append((key, None, None, None, None, None, None, 404 if status == 200 else status, _ts(at)))
             continue
-        dur = _int(d.get("duration"))
-        bpm = d.get("bpm")
-        out.append((key, d.get("id"), bpm if bpm else None, d.get("gain"),
-                    dur * 1000 if dur else None, d.get("release_date"), status, _ts(at)))
+        id_status, t, id_at = by_id.get(str(hit["id"]), (status, None, at))
+        album = (t or hit).get("album") or {}
+        dur = _int((t or hit).get("duration"))
+        out.append((key, _int(hit["id"]), (t or {}).get("isrc"), _int(album.get("id")), album.get("title"),
+                    (t or {}).get("release_date"), dur * 1000 if dur else None, id_status, _ts(id_at)))
     return out
 
 
 def parse_cache(con: duckdb.DuckDBPyConnection, cache: Cache) -> None:
     for table in ("enr_spotify_track", "enr_spotify_artist", "enr_mb_recording", "enr_mb_artist",
-                  "enr_lastfm_tags", "enr_lastfm_info", "enr_deezer_track"):
+                  "enr_lastfm_tags", "enr_lastfm_info", "enr_deezer_track", "enr_deezer_match"):
         con.execute(f"DELETE FROM {table}")
     _insert(con, "enr_spotify_track", _spotify_tracks(cache))
     _insert(con, "enr_spotify_artist", _spotify_artists(cache))
@@ -194,7 +233,9 @@ def parse_cache(con: duckdb.DuckDBPyConnection, cache: Cache) -> None:
     _insert(con, "enr_mb_artist", _mb_artists(cache))
     _insert(con, "enr_lastfm_tags", _lastfm_tags(cache))
     _insert(con, "enr_lastfm_info", _lastfm_info(cache))
-    _insert(con, "enr_deezer_track", _deezer(cache))
+    by_id = _deezer_ids(cache)
+    _insert(con, "enr_deezer_track", _deezer(cache, by_id))
+    _insert(con, "enr_deezer_match", _deezer_matches(cache, by_id))
 
 
 def local_durations(con: duckdb.DuckDBPyConnection) -> None:

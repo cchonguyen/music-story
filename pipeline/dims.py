@@ -19,7 +19,10 @@ LOOKUPS = {
     "_n_artist": ("""SELECT DISTINCT a.name FROM (SELECT unnest(artists) AS a FROM _sp) WHERE a.name IS NOT NULL
                      UNION SELECT DISTINCT c.name FROM (SELECT unnest(artist_credits) AS c FROM _mb)
                      WHERE c.name IS NOT NULL""", normalize_artist),
-    "_n_album": ("SELECT DISTINCT album_name FROM _sp WHERE album_name IS NOT NULL", normalize_album),
+    "_n_album": ("""SELECT DISTINCT album_name FROM _sp WHERE album_name IS NOT NULL
+                    UNION SELECT DISTINCT album_raw FROM events WHERE album_raw IS NOT NULL
+                    UNION SELECT DISTINCT album_name FROM enr_deezer_match WHERE album_name IS NOT NULL""",
+                 normalize_album),
     "_n_mix": ("SELECT DISTINCT mix_desc FROM events WHERE mix_desc IS NOT NULL", mix_credit),
     "_n_title": ("SELECT DISTINCT name FROM _sp WHERE name IS NOT NULL", lambda s: normalize_title(s)[0]),
 }
@@ -39,6 +42,9 @@ STEPS = [
        SELECT * FROM enr_spotify_track WHERE http_status = 200""",
     """CREATE OR REPLACE TEMP TABLE _mb AS
        SELECT * FROM enr_mb_recording WHERE http_status = 200""",
+    # Deezer search hits (already checked against the key) that carry an ISRC
+    """CREATE OR REPLACE TEMP TABLE _dz AS
+       SELECT * FROM enr_deezer_match WHERE http_status = 200 AND isrc IS NOT NULL""",
     # --- 1. per URI: plays, most common mbid, most common key ------------------------------
     """CREATE OR REPLACE TEMP TABLE _uri AS
        SELECT track_uri, count(*) AS n FROM events WHERE track_uri IS NOT NULL GROUP BY 1""",
@@ -52,16 +58,22 @@ STEPS = [
            SELECT track_uri, artist_norm, full_norm, count(*) AS n FROM events
            WHERE track_uri IS NOT NULL GROUP BY 1, 2, 3)
        QUALIFY row_number() OVER (PARTITION BY track_uri ORDER BY n DESC, artist_norm, full_norm) = 1""",
+    # Spotify ISRC first; URIs Spotify never looked up (under the play floor) fall back to the MB
+    # recording of their scrobble mbid, then Deezer and MB search by artist/title.
     """CREATE OR REPLACE TEMP TABLE _uri_track AS
        SELECT u.track_uri, u.n,
-              coalesce(s.isrc, mb.isrcs[1], k.fkey) AS track_id,
+              coalesce(s.isrc, mb.isrcs[1], dz.isrc, ms.isrcs[1], k.fkey) AS track_id,
               CASE WHEN s.isrc IS NOT NULL THEN 'isrc' WHEN mb.isrcs[1] IS NOT NULL THEN 'mb_isrc'
+                   WHEN dz.isrc IS NOT NULL THEN 'dz_isrc' WHEN ms.isrcs[1] IS NOT NULL THEN 'mb_isrc'
                    ELSE 'fallback' END AS kind
        FROM _uri u
        JOIN _uri_key k USING (track_uri)
        LEFT JOIN _sp s USING (track_uri)
        LEFT JOIN _uri_mbid m USING (track_uri)
-       LEFT JOIN _mb mb ON mb.lookup_kind = 'mbid' AND mb.lookup_key = m.track_mbid""",
+       LEFT JOIN _mb mb ON mb.lookup_kind = 'mbid' AND mb.lookup_key = m.track_mbid
+       LEFT JOIN _dz dz ON s.track_uri IS NULL AND dz.lookup_key = k.fkey
+       LEFT JOIN _mb ms ON s.track_uri IS NULL AND ms.lookup_kind = 'search' AND ms.lookup_key = k.fkey
+                        AND ms.score >= 90""",
     """INSERT INTO track_uri_map SELECT track_uri, track_id FROM _uri_track""",
     # --- 2. keys: Spotify-backed first, then Last.fm-only fallbacks -------------------------
     """CREATE OR REPLACE TEMP TABLE _sp_key AS
@@ -85,13 +97,15 @@ STEPS = [
        WHERE s.isrc IS NOT NULL""",
     """CREATE OR REPLACE TEMP TABLE _lfm_track AS
        SELECT k.artist_norm, k.full_norm,
-              coalesce(x.isrc, mb.isrcs[1], ms.isrcs[1], k.fkey) AS track_id,
-              CASE WHEN x.isrc IS NOT NULL THEN 'isrc'
-                   WHEN coalesce(mb.isrcs[1], ms.isrcs[1]) IS NOT NULL THEN 'mb_isrc' ELSE 'fallback' END AS kind
+              coalesce(x.isrc, mb.isrcs[1], dz.isrc, ms.isrcs[1], k.fkey) AS track_id,
+              CASE WHEN x.isrc IS NOT NULL THEN 'isrc' WHEN mb.isrcs[1] IS NOT NULL THEN 'mb_isrc'
+                   WHEN dz.isrc IS NOT NULL THEN 'dz_isrc'
+                   WHEN ms.isrcs[1] IS NOT NULL THEN 'mb_isrc' ELSE 'fallback' END AS kind
        FROM _lfm_key k
        LEFT JOIN (SELECT artist_norm, full_norm, min(isrc) AS isrc FROM _sp_extra GROUP BY 1, 2) x
               USING (artist_norm, full_norm)
        LEFT JOIN _mb mb ON mb.lookup_kind = 'mbid' AND mb.lookup_key = k.track_mbid
+       LEFT JOIN _dz dz ON dz.lookup_key = k.fkey
        LEFT JOIN _mb ms ON ms.lookup_kind = 'search' AND ms.lookup_key = k.fkey AND ms.score >= 90""",
     """INSERT INTO track_key_map
        SELECT artist_norm, full_norm, track_id FROM _sp_key
@@ -101,7 +115,8 @@ STEPS = [
        SELECT track_uri, 0, isrc, 'isrc' FROM _sp_extra WHERE isrc IN (SELECT track_id FROM _lfm_track)""",
     # kind of each track id, for dim_track.isrc and the printed counts (best kind wins)
     """CREATE OR REPLACE TEMP TABLE _ids AS
-       SELECT track_id, arg_min(kind, CASE kind WHEN 'isrc' THEN 1 WHEN 'mb_isrc' THEN 2 ELSE 3 END) AS kind
+       SELECT track_id, arg_min(kind, CASE kind WHEN 'isrc' THEN 1 WHEN 'mb_isrc' THEN 2 WHEN 'dz_isrc' THEN 2
+                                              ELSE 3 END) AS kind
        FROM (SELECT track_id, kind FROM _uri_track UNION ALL SELECT track_id, kind FROM _lfm_track)
        GROUP BY 1""",
     # --- 3. dim_track -----------------------------------------------------------------------
@@ -151,7 +166,10 @@ STEPS = [
            SELECT u.track_id, try_cast(left(s.release_date, 4) AS INTEGER) AS y
            FROM _uri_track u JOIN _sp s USING (track_uri)
            UNION ALL
-           SELECT track_id, try_cast(left(first_release_date, 4) AS INTEGER) FROM _t_mb)
+           SELECT track_id, try_cast(left(first_release_date, 4) AS INTEGER) FROM _t_mb
+           UNION ALL
+           SELECT a.track_id, try_cast(left(dz.release_date, 4) AS INTEGER)
+           FROM _t_attr a JOIN _dz dz ON dz.lookup_key = a.artist_norm || '::' || a.full_norm)
        WHERE y IS NOT NULL GROUP BY 1""",
     """CREATE OR REPLACE TEMP TABLE _t_dur AS
        SELECT a.track_id,
@@ -245,6 +263,42 @@ STEPS = [
               try_cast(left(al.release_date, 4) AS INTEGER), al.album_spotify_id, NULL
        FROM _al al LEFT JOIN dim_artist ar ON ar.artist_norm = al.first_artist
        LEFT JOIN _n_album n ON n.k = al.name""",
+    # Tracks Spotify gave no album (under the play floor, 404, Last.fm-only): the album name the
+    # plays carried (the export's own Spotify album name), else Deezer's. Keyed by primary artist
+    # and album_norm; reuses a Spotify album with that key, otherwise appends one.
+    """CREATE OR REPLACE TEMP TABLE _t_alraw AS
+       SELECT track_id, album_raw FROM (
+           SELECT coalesce(u.track_id, k.track_id) AS track_id, e.album_raw, count(*) AS n
+           FROM events e
+           LEFT JOIN track_uri_map u ON u.track_uri = e.track_uri
+           LEFT JOIN track_key_map k ON e.track_uri IS NULL AND k.artist_norm = e.artist_norm
+                                     AND k.full_norm = e.full_norm
+           WHERE e.album_raw IS NOT NULL GROUP BY 1, 2)
+       QUALIFY row_number() OVER (PARTITION BY track_id ORDER BY n DESC, album_raw) = 1""",
+    """CREATE OR REPLACE TEMP TABLE _t_alfb AS
+       SELECT a.track_id, a.artist_norm, n.v AS album_norm, coalesce(r.album_raw, dz.album_name) AS name,
+              dz.release_date
+       FROM _t_attr a
+       LEFT JOIN _t_sp s USING (track_id)
+       LEFT JOIN _t_alraw r USING (track_id)
+       LEFT JOIN _dz dz ON dz.lookup_key = a.artist_norm || '::' || a.full_norm
+       JOIN _n_album n ON n.k = coalesce(r.album_raw, dz.album_name)
+       WHERE s.album_spotify_id IS NULL AND n.v <> ''""",
+    """INSERT INTO dim_album
+       SELECT (SELECT coalesce(max(album_id), 0) FROM dim_album)
+                  + row_number() OVER (ORDER BY f.artist_norm, f.album_norm),
+              f.name, f.album_norm, ar.artist_id, NULL, f.release_date,
+              try_cast(left(f.release_date, 4) AS INTEGER), NULL, NULL
+       FROM (SELECT artist_norm, album_norm, mode(name) AS name, min(release_date) AS release_date
+             FROM _t_alfb GROUP BY 1, 2) f
+       JOIN dim_artist ar USING (artist_norm)
+       ANTI JOIN (SELECT al.album_norm, ar.artist_norm FROM dim_album al
+                  JOIN dim_artist ar ON ar.artist_id = al.primary_artist_id) x USING (artist_norm, album_norm)""",
+    """CREATE OR REPLACE TEMP TABLE _t_album_fb AS
+       SELECT f.track_id, min(al.album_id) AS album_id
+       FROM _t_alfb f JOIN dim_artist ar USING (artist_norm)
+       JOIN dim_album al ON al.album_norm = f.album_norm AND al.primary_artist_id = ar.artist_id
+       GROUP BY 1""",
     # --- 3 (cont). dim_track ------------------------------------------------------------------
     """INSERT INTO dim_track
        SELECT a.track_id,
@@ -254,7 +308,7 @@ STEPS = [
               a.mix_desc IS NOT NULL AND NOT list_contains($generic, a.mix_desc),
               a.artist_norm || '::' || a.base_norm,
               ar.artist_id,
-              al.album_id,
+              coalesce(al.album_id, fb.album_id),
               d.duration_ms, d.duration_source,
               y.recording_year,
               min(y.recording_year) OVER (PARTITION BY a.artist_norm || '::' || a.base_norm),
@@ -267,6 +321,7 @@ STEPS = [
        LEFT JOIN _t_raw r USING (track_id)
        LEFT JOIN _t_sp s USING (track_id)
        LEFT JOIN dim_album al ON al.spotify_album_id = s.album_spotify_id
+       LEFT JOIN _t_album_fb fb USING (track_id)
        LEFT JOIN _t_dur d USING (track_id)
        LEFT JOIN _t_year y USING (track_id)
        LEFT JOIN enr_lastfm_info fi ON fi.entity_type = 'track' AND fi.http_status = 200
@@ -299,5 +354,5 @@ def run(con: duckdb.DuckDBPyConnection) -> None:
                  .fetchall())
     counts = {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in reversed(TABLES)}
     print(f"  dims: tracks isrc={kinds.get('isrc', 0)} mb_isrc={kinds.get('mb_isrc', 0)} "
-          f"fallback={kinds.get('fallback', 0)}")
+          f"dz_isrc={kinds.get('dz_isrc', 0)} fallback={kinds.get('fallback', 0)}")
     print("  dims: " + " ".join(f"{t}={n}" for t, n in counts.items()))

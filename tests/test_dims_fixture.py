@@ -106,3 +106,26 @@ def test_albums(con):
     want = scalar(con, "SELECT count(*) FROM fx.dim_album")
     hit = scalar(con, f"SELECT count(*) FROM (({key.format(p='fx.')}) INTERSECT ({key.format(p='')}))")
     assert hit >= 0.95 * want, f"{hit} of {want} albums match on name, artist, year and type"
+
+
+def test_without_spotify_tracks_take_deezer_isrcs_and_play_albums(fixture_db_path):
+    """Tracks under the Spotify play floor: ISRC from a Deezer search match, album from the
+    album name their plays carried."""
+    con = fresh_db()
+    load_fx(con, fixture_db_path, [t for t in INPUTS if t != "enr_spotify_track"])
+    key, isrc = con.execute("""
+        SELECT e.artist_norm || '::' || e.full_norm, t.isrc
+        FROM events e JOIN fx.plays p ON p.play_id = e.event_id JOIN fx.dim_track t USING (track_id)
+        WHERE e.track_uri IS NOT NULL AND e.track_mbid IS NULL AND t.isrc IS NOT NULL
+        GROUP BY 1, 2 ORDER BY count(*) DESC, 1 LIMIT 1""").fetchone()
+    con.execute("INSERT INTO enr_deezer_match VALUES (?, 1, ?, 9, 'Some Album', '1999-04-01', 200000, 200, now())",
+                [key, isrc])
+    dims.run(con)
+    kind = scalar(con, "SELECT count(*) FROM track_uri_map m JOIN events e USING (track_uri) "
+                       "WHERE e.artist_norm || '::' || e.full_norm = ? AND m.track_id = ?", [key, isrc])
+    assert kind > 0
+    assert scalar(con, "SELECT isrc FROM dim_track WHERE track_id = ?", [isrc]) == isrc
+    assert scalar(con, "SELECT count(*) FROM dim_album WHERE spotify_album_id IS NOT NULL") == 0
+    assert agreement(con, "SELECT album_id IS NOT NULL FROM dim_track") >= 0.9
+    assert scalar(con, "SELECT count(*) FROM dim_track t ANTI JOIN dim_album a USING (album_id) "
+                       "WHERE t.album_id IS NOT NULL") == 0
