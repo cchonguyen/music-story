@@ -159,7 +159,7 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
     fetchers = make_fetchers(apis, cache, spotify_budget=spotify_budget)
     if not fetchers:
         return 2
-    offered = seed_queue(con, cache, set(fetchers))
+    offered = seed_queue(con, cache, set(fetchers), spotify_min_plays)
     if "spotify" in fetchers:
         if spotify_min_plays > 1:
             cap = spotify_cap(con, spotify_min_plays)

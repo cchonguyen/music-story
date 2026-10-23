@@ -256,6 +256,21 @@ CREATE OR REPLACE TABLE enr_deezer_track (
     fetched_at_utc TIMESTAMP NOT NULL
 );
 
+-- Deezer search by 'artist_norm::full_norm' (tracks under the Spotify play floor and Last.fm-only
+-- songs), so ISRCs and albums do not depend on the Spotify quota. Only a hit whose normalised
+-- artist and title equal the key counts; its /track/{id} lookup supplies ISRC and album.
+CREATE OR REPLACE TABLE enr_deezer_match (
+    lookup_key       VARCHAR PRIMARY KEY,     -- 'artist_norm::full_norm'
+    deezer_id        BIGINT,                  -- NULL when no hit matched
+    isrc             VARCHAR,
+    album_deezer_id  BIGINT,
+    album_name       VARCHAR,
+    release_date     VARCHAR,                 -- YYYY-MM-DD
+    duration_ms      BIGINT,
+    http_status      INTEGER NOT NULL,        -- 404 when the search had no matching hit
+    fetched_at_utc   TIMESTAMP NOT NULL
+);
+
 ------------------------------------------------------------------------------
 -- Layer 5: dimensions (04_dims.py, W7)
 ------------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from pipeline.normalize import normalize_album
 
 TOP_LASTFM_TRACKS = 2000
 TOP_LASTFM_ALBUMS = 1000
+TAIL_OFFSET = 1_000_000  # tail keys queue behind every root item of the same endpoint
 
 TRACK_KEY = "artist_norm || '::' || full_norm"
 LFM_ONLY = "track_uri IS NULL"
@@ -41,11 +42,23 @@ _SQL = {
     ("lastfm", "album.getTopTags"): None,  # keys need normalize_album, see _albums
     ("lastfm", "track.getInfo"): f"""
         SELECT {TRACK_KEY} FROM events WHERE {LFM_ONLY} GROUP BY 1 ORDER BY count(*) DESC, 1""",
+    ("deezer", "search"): f"""
+        SELECT {TRACK_KEY} FROM events WHERE {LFM_ONLY} GROUP BY 1 ORDER BY count(*) DESC, 1""",
 }
 
+# Spotify-played keys whose most played URI sits under the Spotify play floor: they never reach
+# GET /tracks, so MusicBrainz search and Deezer search look them up by artist and title instead.
+_TAIL_SQL = f"""
+    WITH u AS (SELECT track_uri, count(*) AS n FROM events WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1)
+    SELECT {TRACK_KEY} AS k FROM events JOIN u USING (track_uri)
+    GROUP BY 1 HAVING max(u.n) < ? ORDER BY count(*) DESC, 1"""
+TAIL_ENDPOINTS = [("musicbrainz", "search"), ("deezer", "search")]
 
-def seed_queue(con: duckdb.DuckDBPyConnection, cache: Cache, apis: set[str]) -> dict[tuple[str, str], int]:
-    """Insert root items for the chosen apis; returns how many were offered per endpoint."""
+
+def seed_queue(con: duckdb.DuckDBPyConnection, cache: Cache, apis: set[str],
+               spotify_min_plays: int = 1) -> dict[tuple[str, str], int]:
+    """Insert root items for the chosen apis; returns how many were offered per endpoint.
+    With a Spotify play floor above 1, the tail under it is also queued for artist/title search."""
     offered: dict[tuple[str, str], int] = {}
     for (api, endpoint), sql in _SQL.items():
         if api not in apis:
@@ -57,6 +70,12 @@ def seed_queue(con: duckdb.DuckDBPyConnection, cache: Cache, apis: set[str]) -> 
         items: list[QueueItem] = [(api, endpoint, k, rank) for rank, k in enumerate(keys, 1)]
         cache.enqueue(items)
         offered[(api, endpoint)] = len(items)
+    if spotify_min_plays > 1:
+        tail = [r[0] for r in con.execute(_TAIL_SQL, [spotify_min_plays]).fetchall() if r[0]]
+        for api, endpoint in TAIL_ENDPOINTS:
+            if api in apis:
+                cache.enqueue([(api, endpoint, k, TAIL_OFFSET + rank) for rank, k in enumerate(tail, 1)])
+                offered[(api, f"{endpoint} (tail)")] = len(tail)
     return offered
 
 

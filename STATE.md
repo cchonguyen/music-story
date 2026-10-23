@@ -22,7 +22,9 @@ Next:
    Dev-mode quota is a per-account request count, so Spotify spends at most `--spotify-budget`
    (env SPOTIFY_DAILY_BUDGET, 500/rolling 24 h; 0 = rely on the QUOTA_EXCEEDED pause), only on tracks
    with `--spotify-min-plays` (default 3: 10,544 URIs, 76% of plays). spotify.artists (genres only)
-   held unless `--spotify-artists`. Deezer + MB isrc only get work from Spotify ISRCs. fetch exits
+   held unless `--spotify-artists`. Tail under the floor (+ Last.fm-only keys) goes to Deezer search
+   -> deezer.id (ISRC, album) -> MB isrc, and MB search; dims uses them and builds fallback albums
+   from play album names (schema: enr_deezer_match, 2026-10-23). fetch exits
    when only paused apis remain (`--wait` sits it out). Charlie reruns `fetch` daily.
 2. Fixture site LIVE 2026-10-22 behind Access (team REDACTED-ACCESS-TEAM, allow redacted-email@example.com).
    Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
@@ -37,7 +39,6 @@ Decisions (window 1 review):
 - enr_local_duration reads stg_spotify; NULL `skipped` counts as not skipped (old exports).
 - Follow-up fetch items (Spotify artists, ISRC, Deezer) inherit their track's rank.
 - Pauses (Retry-After > 600 s, QUOTA_EXCEEDED, budget) live in api_pause; failed items retry once on next `fetch`.
-- Open: PR 2 = MB search for Spotify tracks under the floor + dim_album fallback key (needs lead).
 - Open: genre map parents to review with Charlie (blues->jazz, hardcore->metal, reggae/dub/ska->world).
 - Open: platform `ios` is exact match; 4,104 of 12,036 real `other` plays are iOS/iPhone/iPad
   strings. Proposed W1 fix (case-insensitive ios/iphone/ipad -> ios + fixture update) before W8.
