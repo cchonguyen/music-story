@@ -13,6 +13,7 @@ import argparse
 import sys
 import threading
 import time
+from datetime import datetime, timedelta
 
 import duckdb
 import httpx
@@ -53,12 +54,26 @@ class Worker(threading.Thread):
         self.api, self.fetcher, self.names, self.stop_event = api, fetcher, names, stop
         self.lastfm_key = lastfm_key
         self.idle = False
+        self.paused = False
         self.done = 0
         self.note: str | None = None
 
     def run(self) -> None:
         cache = self.fetcher.cache
         while not self.stop_event.is_set():
+            wait = cache.pause_left(self.api)
+            if wait > 0:  # locked out: send nothing until the stored time
+                if not self.paused:
+                    self.paused = True
+                    resume = datetime.now().astimezone() + timedelta(seconds=wait)
+                    print(f"{self.api}: locked out by the api, waiting until {resume:%a %H:%M} local "
+                          "(no requests until then)", flush=True)
+                self.idle = True
+                self.stop_event.wait(min(wait, 60.0))
+                continue
+            if self.paused:
+                self.paused = False
+                print(f"{self.api}: lockout over, resuming", flush=True)
             item = cache.next_item(self.api)
             if item is None:
                 self.idle = True
@@ -70,9 +85,9 @@ class Worker(threading.Thread):
             try:
                 self.fetcher.fetch(endpoint, key, req, priority)
             except RateLimited as e:
+                cache.set_pause(self.api, e.seconds)  # remembered across runs; the loop above waits
                 self.note = str(e)
-                self.idle = True
-                return
+                continue
             except Exception as e:  # noqa: BLE001 - keep the overnight job alive; record and move on
                 cache.mark_failed(self.api, endpoint, key, type(e).__name__)
             self.done += 1
@@ -176,7 +191,12 @@ def status(cache_path=None) -> int:
         queued_by_api[api] = queued_by_api.get(api, 0) + queued
     print("estimated hours left (queued / rate, ignores items queued by later responses):")
     for api, n in queued_by_api.items():
-        print(f"  {api:<12} {n * INTERVALS[api] / 3600:6.1f} h")
+        wait = cache.pause_left(api)
+        locked = ""
+        if wait > 0:
+            resume = datetime.now().astimezone() + timedelta(seconds=wait)
+            locked = f"  (locked out until {resume:%a %H:%M} local, then)"
+        print(f"  {api:<12} {n * INTERVALS[api] / 3600:6.1f} h{locked}")
     cache.close()
     return 0
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 
 import duckdb
 import httpx
@@ -227,3 +229,39 @@ def test_run_with_empty_cache(tmp_path):
     enrich.run(con, tmp_path / "empty.sqlite")
     assert isinstance(con, duckdb.DuckDBPyConnection)
     assert scalar(con, "SELECT count(*) FROM enr_spotify_track") == 0
+
+
+def run_worker_briefly(api, fetcher, cache, seconds=0.3):
+    stop = threading.Event()
+    w = enrich.Worker(api, fetcher, {}, stop)
+    w.start()
+    time.sleep(seconds)
+    stop.set()
+    w.join(2)
+    return w
+
+
+def test_long_lockout_is_stored_and_no_requests_follow():
+    cache = Cache(":memory:")
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        return httpx.Response(429, headers={"Retry-After": "86400"})
+
+    f, _ = make_fetcher(handler, cache)
+    cache.enqueue([("deezer", "track", "ISRC1", 1), ("deezer", "track", "ISRC2", 2)])
+    run_worker_briefly("deezer", f, cache)
+    assert len(calls) == 1                       # asked once, then waited
+    assert 86000 < cache.pause_left("deezer") <= 86400
+    assert cache.pause_left("lastfm") == 0
+
+
+def test_stored_lockout_blocks_a_new_run():
+    cache = Cache(":memory:")
+    cache.set_pause("deezer", 3600)
+    calls = []
+    f, _ = make_fetcher(lambda r: calls.append(r) or httpx.Response(200, json={}), cache)
+    cache.enqueue([("deezer", "track", "ISRC1", 1)])
+    w = run_worker_briefly("deezer", f, cache)
+    assert calls == [] and w.paused

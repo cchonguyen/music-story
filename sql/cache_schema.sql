@@ -24,3 +24,10 @@ CREATE TABLE IF NOT EXISTS fetch_queue (
     PRIMARY KEY (api, endpoint, key)
 );
 CREATE INDEX IF NOT EXISTS fetch_queue_order ON fetch_queue (api, priority);
+
+-- Long rate-limit lockouts (Retry-After over 10 min) per api. Workers wait them out and reruns
+-- send nothing until then, because asking again can extend the lockout.
+CREATE TABLE IF NOT EXISTS api_pause (
+    api        TEXT PRIMARY KEY,
+    until_utc  TEXT NOT NULL      -- ISO 8601 UTC
+);

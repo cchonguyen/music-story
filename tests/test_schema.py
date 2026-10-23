@@ -45,4 +45,4 @@ def test_cache_schema_applies_to_sqlite():
     db.executescript(config.CACHE_SCHEMA_SQL.read_text())
     db.executescript(config.CACHE_SCHEMA_SQL.read_text())
     names = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    assert names == {"http_cache", "fetch_queue"}
+    assert names == {"http_cache", "fetch_queue", "api_pause"}
