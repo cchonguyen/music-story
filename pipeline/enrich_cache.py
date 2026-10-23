@@ -21,8 +21,18 @@ MAX_ATTEMPTS = 5
 QueueItem = tuple[str, str, str, int]
 
 
+# fetch_queue row `q` is within its api's play-count floor (api_limit)
+_WITHIN = "q.priority <= coalesce((SELECT max_priority FROM api_limit l WHERE l.api = q.api), q.priority)"
+# 1 for endpoints that go after every other endpoint of their api
+_DEFERRED = "(q.api = 'spotify' AND q.endpoint = 'artists')"
+
+
+def _iso(t: datetime) -> str:
+    return t.strftime("%Y-%m-%dT%H:%M:%S")
+
+
 def utcnow_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    return _iso(datetime.now(UTC))
 
 
 def default_path() -> Path:
@@ -39,12 +49,21 @@ class Cache:
         with self.lock:
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.executescript(config.CACHE_SCHEMA_SQL.read_text())
+            cols = {r[1] for r in self.db.execute("PRAGMA table_info(api_pause)")}
+            if "reason" not in cols:  # caches created before the column existed
+                self.db.execute("ALTER TABLE api_pause ADD COLUMN reason TEXT")
 
     # ---- long lockouts ------------------------------------------------------
-    def set_pause(self, api: str, seconds: float) -> None:
+    def set_pause(self, api: str, seconds: float, reason: str | None = None) -> None:
         until = (datetime.now(UTC) + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%S")
         with self.lock:
-            self.db.execute("INSERT OR REPLACE INTO api_pause(api, until_utc) VALUES (?, ?)", (api, until))
+            self.db.execute("INSERT OR REPLACE INTO api_pause(api, until_utc, reason) VALUES (?, ?, ?)",
+                            (api, until, reason))
+
+    def pause_reason(self, api: str) -> str | None:
+        with self.lock:
+            row = self.db.execute("SELECT reason FROM api_pause WHERE api = ?", (api,)).fetchone()
+        return row[0] if row else None
 
     def pause_left(self, api: str) -> float:
         """Seconds until `api` may be asked again; 0 when it is not locked out."""
@@ -54,6 +73,41 @@ class Cache:
             return 0.0
         until = datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
         return max(0.0, (until - datetime.now(UTC)).total_seconds())
+
+    # ---- daily request budget ---------------------------------------------
+    def log_request(self, api: str) -> None:
+        now = datetime.now(UTC)
+        with self.lock:
+            self.db.execute("INSERT INTO request_log(api, at_utc) VALUES (?, ?)", (api, _iso(now)))
+            self.db.execute("DELETE FROM request_log WHERE api = ? AND at_utc < ?",
+                            (api, _iso(now - timedelta(days=2))))
+
+    def requests_in_window(self, api: str, window_s: float = 86400.0) -> tuple[int, float]:
+        """(requests sent in the last `window_s`, seconds until the oldest of them ages out)."""
+        now = datetime.now(UTC)
+        with self.lock:
+            n, oldest = self.db.execute(
+                "SELECT count(*), min(at_utc) FROM request_log WHERE api = ? AND at_utc >= ?",
+                (api, _iso(now - timedelta(seconds=window_s))),
+            ).fetchone()
+        if not n:
+            return 0, 0.0
+        ages_out = datetime.strptime(oldest, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC) \
+            + timedelta(seconds=window_s)
+        return n, max(0.0, (ages_out - now).total_seconds())
+
+    # ---- play-count floor ---------------------------------------------------
+    def set_limit(self, api: str, max_priority: int | None, note: str | None = None) -> None:
+        with self.lock:
+            if max_priority is None:
+                self.db.execute("DELETE FROM api_limit WHERE api = ?", (api,))
+            else:
+                self.db.execute("INSERT OR REPLACE INTO api_limit(api, max_priority, note) VALUES (?, ?, ?)",
+                                (api, max_priority, note))
+
+    def limit(self, api: str) -> tuple[int, str | None] | None:
+        with self.lock:
+            return self.db.execute("SELECT max_priority, note FROM api_limit WHERE api = ?", (api,)).fetchone()
 
     def close(self) -> None:
         with self.lock:
@@ -107,11 +161,12 @@ class Cache:
                 raise
 
     def next_item(self, api: str) -> tuple[str, str, int] | None:
-        """Highest-priority eligible queue row as (endpoint, key, priority)."""
+        """Highest-priority eligible queue row as (endpoint, key, priority).
+        Within the api's limit; Spotify artists wait until no track is left."""
         with self.lock:
             return self.db.execute(
-                "SELECT endpoint, key, priority FROM fetch_queue WHERE api=? AND attempts<? "
-                "ORDER BY priority, endpoint, key LIMIT 1",
+                f"SELECT endpoint, key, priority FROM fetch_queue q WHERE api=? AND attempts<? AND {_WITHIN} "
+                f"ORDER BY {_DEFERRED}, priority, endpoint, key LIMIT 1",
                 (api, MAX_ATTEMPTS),
             ).fetchone()
 
@@ -130,7 +185,8 @@ class Cache:
     def pending(self, apis: Iterable[str] | None = None) -> int:
         with self.lock:
             rows = self.db.execute(
-                "SELECT api, count(*) FROM fetch_queue WHERE attempts<? GROUP BY api", (MAX_ATTEMPTS,)
+                f"SELECT api, count(*) FROM fetch_queue q WHERE attempts<? AND {_WITHIN} GROUP BY api",
+                (MAX_ATTEMPTS,),
             ).fetchall()
         wanted = set(apis) if apis is not None else None
         return sum(n for a, n in rows if wanted is None or a in wanted)
@@ -150,6 +206,14 @@ class Cache:
                 failed[(a, e)] = f
         keys = sorted(set(done) | set(queued))
         return [(a, e, done.get((a, e), 0), queued.get((a, e), 0), failed.get((a, e), 0)) for a, e in keys]
+
+    def over_limit(self) -> dict[str, int]:
+        """Queued rows per api that sit past its play-count floor."""
+        with self.lock:
+            return dict(self.db.execute(
+                f"SELECT api, count(*) FROM fetch_queue q WHERE attempts<? AND NOT {_WITHIN} GROUP BY api",
+                (MAX_ATTEMPTS,),
+            ).fetchall())
 
     # ---- reading for the parser -------------------------------------------
     def rows(self, api: str, endpoint: str) -> Iterator[tuple[str, int, str | None, str]]:

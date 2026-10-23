@@ -7,6 +7,7 @@ Nothing here prints response bodies. All waiting goes through an injectable
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -21,15 +22,29 @@ MAX_RETRY_AFTER = 600.0  # a longer lockout is stored in api_pause and waited ou
 # Minimum seconds between requests per api.
 # Spotify: 3 req/s drew a 24 h lockout after ~600 requests (2026-10-22), so 1 req/s.
 INTERVALS = {"spotify": 1.0, "musicbrainz": 1.05, "lastfm": 0.25, "deezer": 0.11}
+# Requests per rolling 24 h. Spotify dev mode has an account-wide count quota (unpublished; the
+# first lockout came after ~600 requests), so pacing alone does not protect it.
+BUDGETS = {"spotify": int(os.environ.get("SPOTIFY_DAILY_BUDGET", "500"))}
+QUOTA_PAUSE = 86400.0      # QUOTA_EXCEEDED without a usable Retry-After
+NO_RETRY_AFTER_PAUSE = {"spotify": 3600.0}  # a bare 429 from these apis pauses instead of retrying
 LASTFM_TRANSIENT_ERRORS = {8, 11, 16, 29}
 
 
 class RateLimited(Exception):
-    """Retry-After was longer than we are willing to sit out."""
+    """The api must not be asked again for `seconds` (stored in api_pause by the worker)."""
 
-    def __init__(self, api: str, seconds: float):
-        super().__init__(f"{api} asked to wait {seconds:.0f}s")
-        self.seconds = seconds
+    def __init__(self, api: str, seconds: float, reason: str = "Retry-After"):
+        super().__init__(f"{api} paused {seconds:.0f}s ({reason})")
+        self.seconds, self.reason = seconds, reason
+
+
+def _quota_reason(body: str) -> str | None:
+    """`reason` from a 429 body, flat or under `error` (Spotify: QUOTA_EXCEEDED)."""
+    data = _json(body)
+    if not isinstance(data, dict):
+        return None
+    err = data.get("error")
+    return data.get("reason") or (err.get("reason") if isinstance(err, dict) else None)
 
 
 @dataclass
@@ -165,15 +180,28 @@ class SpotifyAuth:
         return {"Authorization": f"Bearer {self.token}"}
 
 
+_DEFAULT = object()
+
+
 class Fetcher:
     """Cache-first fetching for one api with the retry rules from the spec."""
 
     def __init__(self, api: str, client: httpx.Client, cache: Cache, *, interval: float | None = None,
                  sleep: Callable[[float], None] = time.sleep, auth: SpotifyAuth | None = None,
-                 user_agent: str | None = None):
+                 user_agent: str | None = None, budget: int | None | object = _DEFAULT):
         self.api, self.client, self.cache, self.sleep, self.auth = api, client, cache, sleep, auth
         self.limiter = RateLimiter(INTERVALS[api] if interval is None else interval, sleep)
         self.user_agent = user_agent
+        self.budget = BUDGETS.get(api) if budget is _DEFAULT else budget
+
+    def _spend(self) -> None:
+        """Count one request against the daily budget, or pause the api when it is used up."""
+        if self.budget is None:
+            return
+        used, ages_out = self.cache.requests_in_window(self.api)
+        if used >= self.budget:
+            raise RateLimited(self.api, max(ages_out, 60.0), "budget")
+        self.cache.log_request(self.api)
 
     def _transient_body(self, body: str) -> bool:
         if self.api != "lastfm":
@@ -194,6 +222,7 @@ class Fetcher:
                 headers["User-Agent"] = self.user_agent
             if self.auth:
                 headers.update(self.auth.headers())
+            self._spend()
             try:
                 resp = self.client.request(req.method, req.url, params=req.params, headers=headers,
                                            data=req.data)
@@ -209,8 +238,14 @@ class Fetcher:
                 continue
             if status == 429:
                 try:
-                    wait = float(resp.headers.get("Retry-After", ""))
+                    wait: float | None = float(resp.headers.get("Retry-After", ""))
                 except ValueError:
+                    wait = None
+                if _quota_reason(resp.text) == "QUOTA_EXCEEDED":  # never retry into a spent quota
+                    raise RateLimited(self.api, wait if wait and wait > 0 else QUOTA_PAUSE, "QUOTA_EXCEEDED")
+                if wait is None and self.api in NO_RETRY_AFTER_PAUSE:
+                    raise RateLimited(self.api, NO_RETRY_AFTER_PAUSE[self.api], "429 without Retry-After")
+                if wait is None:
                     wait = min(2.0**attempt, 60.0)
                 if wait > MAX_RETRY_AFTER:
                     raise RateLimited(self.api, wait)

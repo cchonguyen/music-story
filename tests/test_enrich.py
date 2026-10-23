@@ -14,13 +14,13 @@ from helpers import fresh_db, scalar
 from pipeline import enrich
 from pipeline.enrich_cache import Cache
 from pipeline.enrich_clients import Fetcher, RateLimited, build_request
-from pipeline.enrich_queue import seed_queue
+from pipeline.enrich_queue import seed_queue, spotify_cap
 
 
-def make_fetcher(handler, cache, api="deezer", sleeps=None):
+def make_fetcher(handler, cache, api="deezer", sleeps=None, **kwargs):
     client = httpx.Client(transport=httpx.MockTransport(handler))
     log = sleeps if sleeps is not None else []
-    return Fetcher(api, client, cache, interval=0, sleep=log.append), log
+    return Fetcher(api, client, cache, interval=0, sleep=log.append, **kwargs), log
 
 
 def test_cache_hit_skips_request():
@@ -265,3 +265,117 @@ def test_stored_lockout_blocks_a_new_run():
     cache.enqueue([("deezer", "track", "ISRC1", 1)])
     w = run_worker_briefly("deezer", f, cache)
     assert calls == [] and w.paused
+
+
+# ---- Spotify dev-mode quota: QUOTA_EXCEEDED, daily budget, play-count floor ----------------
+QUOTA_BODY = {"error": {"status": 429, "message": "Too many requests", "reason": "QUOTA_EXCEEDED"}}
+
+
+@pytest.mark.parametrize("body", [QUOTA_BODY, QUOTA_BODY["error"]])
+def test_quota_exceeded_pauses_at_once_even_with_short_retry_after(body):
+    cache = Cache(":memory:")
+    calls = []
+    f, sleeps = make_fetcher(lambda r: calls.append(r) or httpx.Response(
+        429, headers={"Retry-After": "5"}, json=body), cache, api="spotify")
+    with pytest.raises(RateLimited) as e:
+        f.fetch("tracks", "t1", build_request("spotify", "tracks", "t1"))
+    assert len(calls) == 1 and sleeps == []
+    assert e.value.reason == "QUOTA_EXCEEDED" and e.value.seconds == 5
+
+
+def test_quota_exceeded_without_retry_after_pauses_a_day():
+    cache = Cache(":memory:")
+    f, _ = make_fetcher(lambda r: httpx.Response(429, json=QUOTA_BODY), cache, api="spotify")
+    with pytest.raises(RateLimited) as e:
+        f.fetch("tracks", "t1", build_request("spotify", "tracks", "t1"))
+    assert e.value.seconds == 86400
+
+
+def test_spotify_bare_429_pauses_instead_of_retrying():
+    cache = Cache(":memory:")
+    calls = []
+    f, _ = make_fetcher(lambda r: calls.append(r) or httpx.Response(429), cache, api="spotify")
+    with pytest.raises(RateLimited) as e:
+        f.fetch("tracks", "t1", build_request("spotify", "tracks", "t1"))
+    assert len(calls) == 1 and e.value.seconds == 3600
+
+
+def test_daily_budget_stops_before_the_next_request():
+    cache = Cache(":memory:")
+    calls = []
+    f, _ = make_fetcher(lambda r: calls.append(r) or httpx.Response(200, json={}), cache,
+                        api="spotify", budget=2)
+    for k in ("a", "b"):
+        f.fetch("tracks", k, build_request("spotify", "tracks", k))
+    with pytest.raises(RateLimited) as e:
+        f.fetch("tracks", "c", build_request("spotify", "tracks", "c"))
+    assert len(calls) == 2 and e.value.reason == "budget"
+    assert 86000 < e.value.seconds <= 86400
+    assert cache.requests_in_window("spotify")[0] == 2
+
+
+def test_worker_stores_the_pause_reason():
+    cache = Cache(":memory:")
+    f, _ = make_fetcher(lambda r: httpx.Response(429, json=QUOTA_BODY), cache, api="spotify")
+    cache.enqueue([("spotify", "tracks", "t1", 1)])
+    run_worker_briefly("spotify", f, cache)
+    assert cache.pause_reason("spotify") == "QUOTA_EXCEEDED"
+    assert cache.next_item("spotify") == ("tracks", "t1", 1)  # still queued, not failed
+
+
+def test_play_count_floor_skips_rare_tracks_without_dropping_them():
+    con = _events_db()
+    cache = Cache(":memory:")
+    seed_queue(con, cache, {"spotify"})
+    assert spotify_cap(con, 2) == 2
+    cache.set_limit("spotify", spotify_cap(con, 2), "min_plays=2")
+    order = []
+    while (item := cache.next_item("spotify")):
+        order.append(item[1])
+        cache.put("spotify", item[0], item[1], 404, "{}")
+    assert order == ["popular", "middle"]
+    assert cache.pending(["spotify"]) == 0 and cache.over_limit() == {"spotify": 1}
+    cache.set_limit("spotify", None)
+    assert cache.next_item("spotify")[1] == "rare"
+
+
+def test_spotify_artists_wait_for_every_track():
+    cache = Cache(":memory:")
+    cache.enqueue([("spotify", "artists", "ar1", 1), ("spotify", "tracks", "t9", 9)])
+    assert cache.next_item("spotify") == ("tracks", "t9", 9)
+
+
+def test_old_cache_gains_pause_reason(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.sqlite"
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE api_pause (api TEXT PRIMARY KEY, until_utc TEXT NOT NULL)")
+    db.execute("INSERT INTO api_pause VALUES ('spotify', '2099-01-01T00:00:00')")
+    db.commit()
+    db.close()
+    cache = Cache(path)
+    assert cache.pause_left("spotify") > 0 and cache.pause_reason("spotify") is None
+    cache.set_pause("spotify", 60, "budget")
+    assert cache.pause_reason("spotify") == "budget"
+
+
+def test_fetch_exits_when_only_paused_apis_remain(tmp_path, monkeypatch, capsys):
+    db = tmp_path / "music.duckdb"
+    con = _events_db()
+    con.execute(f"ATTACH '{db}' AS f")
+    con.execute(f"COPY FROM DATABASE {con.execute('SELECT current_database()').fetchone()[0]} TO f")
+    con.close()
+    monkeypatch.setattr(enrich.config, "MUSIC_DB", db)
+    monkeypatch.setattr(enrich.config, "SPOTIFY_CLIENT_ID", "id")
+    monkeypatch.setattr(enrich.config, "SPOTIFY_CLIENT_SECRET", "secret")
+    cache_path = tmp_path / "c.sqlite"
+    cache = Cache(cache_path)
+    cache.set_pause("spotify", 3600, "QUOTA_EXCEEDED")
+    cache.close()
+    started = time.monotonic()
+    assert enrich.fetch(["spotify"], max_minutes=1, cache_path=cache_path, spotify_min_plays=2) == 0
+    out = capsys.readouterr().out
+    assert time.monotonic() - started < 30
+    assert "paused (QUOTA_EXCEEDED); rerun fetch after" in out
+    assert "priority <= 2" in out
