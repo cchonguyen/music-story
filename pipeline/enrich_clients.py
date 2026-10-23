@@ -23,8 +23,11 @@ MAX_RETRY_AFTER = 600.0  # a longer lockout is stored in api_pause and waited ou
 # Spotify: 3 req/s drew a 24 h lockout after ~600 requests (2026-10-22), so 1 req/s.
 INTERVALS = {"spotify": 1.0, "musicbrainz": 1.05, "lastfm": 0.25, "deezer": 0.11}
 # Requests per rolling 24 h. Spotify dev mode has an account-wide count quota (unpublished; the
-# first lockout came after ~600 requests), so pacing alone does not protect it.
-BUDGETS = {"spotify": int(os.environ.get("SPOTIFY_DAILY_BUDGET", "500"))}
+# first lockout came after ~600 requests), so pacing alone does not protect it. 0 = no budget:
+# rely on the QUOTA_EXCEEDED pause alone. Requests to LOGGED apis are counted either way.
+SPOTIFY_DAILY_BUDGET = int(os.environ.get("SPOTIFY_DAILY_BUDGET", "500"))
+BUDGETS = {"spotify": SPOTIFY_DAILY_BUDGET or None}
+LOGGED = {"spotify"}
 QUOTA_PAUSE = 86400.0      # QUOTA_EXCEEDED without a usable Retry-After
 NO_RETRY_AFTER_PAUSE = {"spotify": 3600.0}  # a bare 429 from these apis pauses instead of retrying
 LASTFM_TRANSIENT_ERRORS = {8, 11, 16, 29}
@@ -196,12 +199,12 @@ class Fetcher:
 
     def _spend(self) -> None:
         """Count one request against the daily budget, or pause the api when it is used up."""
-        if self.budget is None:
-            return
-        used, ages_out = self.cache.requests_in_window(self.api)
-        if used >= self.budget:
-            raise RateLimited(self.api, max(ages_out, 60.0), "budget")
-        self.cache.log_request(self.api)
+        if self.budget:
+            used, ages_out = self.cache.requests_in_window(self.api)
+            if used >= self.budget:
+                raise RateLimited(self.api, max(ages_out, 60.0), "budget")
+        if self.budget or self.api in LOGGED:
+            self.cache.log_request(self.api)
 
     def _transient_body(self, body: str) -> bool:
         if self.api != "lastfm":

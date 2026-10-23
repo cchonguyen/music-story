@@ -22,9 +22,12 @@ QueueItem = tuple[str, str, str, int]
 
 
 # fetch_queue row `q` is within its api's play-count floor (api_limit)
-_WITHIN = "q.priority <= coalesce((SELECT max_priority FROM api_limit l WHERE l.api = q.api), q.priority)"
+_FLOOR = "q.priority <= coalesce((SELECT max_priority FROM api_limit l WHERE l.api = q.api), q.priority)"
 # 1 for endpoints that go after every other endpoint of their api
 _DEFERRED = "(q.api = 'spotify' AND q.endpoint = 'artists')"
+# Endpoints kept queued but not fetched unless asked for. Spotify artists only add genres, which
+# Last.fm and MusicBrainz already cover; the track payload carries the artist ids and names.
+HELD = frozenset({("spotify", "artists")})
 
 
 def _iso(t: datetime) -> str:
@@ -40,8 +43,11 @@ def default_path() -> Path:
 
 
 class Cache:
-    def __init__(self, path: Path | str | None = None):
+    def __init__(self, path: Path | str | None = None, held: Iterable[tuple[str, str]] = HELD):
         self.path = Path(path) if path else default_path()
+        terms = [f"(q.api = '{a}' AND q.endpoint = '{e}')" for a, e in sorted(held)]
+        self._held = "(" + " OR ".join(terms) + ")" if terms else "0"
+        self._within = f"({_FLOOR} AND NOT {self._held})"
         if str(self.path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
@@ -162,10 +168,10 @@ class Cache:
 
     def next_item(self, api: str) -> tuple[str, str, int] | None:
         """Highest-priority eligible queue row as (endpoint, key, priority).
-        Within the api's limit; Spotify artists wait until no track is left."""
+        Within the api's floor and not held; Spotify artists wait until no track is left."""
         with self.lock:
             return self.db.execute(
-                f"SELECT endpoint, key, priority FROM fetch_queue q WHERE api=? AND attempts<? AND {_WITHIN} "
+                f"SELECT endpoint, key, priority FROM fetch_queue q WHERE api=? AND attempts<? AND {self._within} "
                 f"ORDER BY {_DEFERRED}, priority, endpoint, key LIMIT 1",
                 (api, MAX_ATTEMPTS),
             ).fetchone()
@@ -185,7 +191,7 @@ class Cache:
     def pending(self, apis: Iterable[str] | None = None) -> int:
         with self.lock:
             rows = self.db.execute(
-                f"SELECT api, count(*) FROM fetch_queue q WHERE attempts<? AND {_WITHIN} GROUP BY api",
+                f"SELECT api, count(*) FROM fetch_queue q WHERE attempts<? AND {self._within} GROUP BY api",
                 (MAX_ATTEMPTS,),
             ).fetchall()
         wanted = set(apis) if apis is not None else None
@@ -208,12 +214,20 @@ class Cache:
         return [(a, e, done.get((a, e), 0), queued.get((a, e), 0), failed.get((a, e), 0)) for a, e in keys]
 
     def over_limit(self) -> dict[str, int]:
-        """Queued rows per api that sit past its play-count floor."""
+        """Queued rows per api that sit past its play-count floor (held endpoints aside)."""
         with self.lock:
             return dict(self.db.execute(
-                f"SELECT api, count(*) FROM fetch_queue q WHERE attempts<? AND NOT {_WITHIN} GROUP BY api",
+                f"SELECT api, count(*) FROM fetch_queue q WHERE attempts<? AND NOT {_FLOOR} "
+                f"AND NOT {self._held} GROUP BY api",
                 (MAX_ATTEMPTS,),
             ).fetchall())
+
+    def held_counts(self) -> dict[tuple[str, str], int]:
+        """Queued rows per held (api, endpoint)."""
+        with self.lock:
+            return {(a, e): n for a, e, n in self.db.execute(
+                f"SELECT api, endpoint, count(*) FROM fetch_queue q WHERE attempts<? AND {self._held} "
+                "GROUP BY 1, 2", (MAX_ATTEMPTS,))}
 
     # ---- reading for the parser -------------------------------------------
     def rows(self, api: str, endpoint: str) -> Iterator[tuple[str, int, str | None, str]]:
