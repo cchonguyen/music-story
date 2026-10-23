@@ -24,6 +24,7 @@ is needed to resume.
 - `tests/golden/` hand-checked cases; `tests/test_*_fixture.py` packet acceptance tests
 - `site/` Observable Framework site; loaders call `pipeline/site_data.py` (SITE_DB, else fixture marts)
 - `specs/Wn_*.md` one spec per work packet; `.claude/agents/*-worker.md` tiered workers
+- `docs/PROJECT.md` implementation notes: data facts, pipeline, enrichment and quota strategy, decisions
 
 ## Delegation (lead = Opus session)
 Spawn workers with the Agent tool, `isolation: "worktree"`, at most 2-3 at once, passing only the spec
