@@ -1,12 +1,15 @@
 """Build step 03 and the overnight fetch.
 
     uv run python -m pipeline.enrich fetch [--api spotify,musicbrainz,lastfm,deezer] [--max-minutes N]
-                                           [--spotify-min-plays N] [--wait]
+                                           [--spotify-min-plays N] [--spotify-budget N]
+                                           [--spotify-artists] [--wait]
     uv run python -m pipeline.enrich status
 
-Spotify spends at most SPOTIFY_DAILY_BUDGET requests (default 500) per rolling 24 h, and only on
-tracks with --spotify-min-plays plays or more (default 5). When every api left is paused, fetch
-exits and prints when to rerun; --wait sits it out instead.
+Spotify spends at most --spotify-budget requests (env SPOTIFY_DAILY_BUDGET, default 500; 0 = no
+budget, rely on the QUOTA_EXCEEDED pause) per rolling 24 h, only on tracks with
+--spotify-min-plays plays or more (default 3). spotify.artists rows stay queued but are fetched
+only with --spotify-artists. When every api left is paused, fetch exits and prints when to rerun;
+--wait sits it out instead.
 
 `run(con)` only parses the HTTP cache into the enr_* tables; it never touches the network.
 `fetch` is resumable: the queue lives in the cache database. It prints counts, never bodies.
@@ -24,10 +27,11 @@ import duckdb
 import httpx
 
 from pipeline import config
-from pipeline.enrich_cache import Cache
+from pipeline.enrich_cache import HELD, Cache
 from pipeline.enrich_clients import (
     BUDGETS,
     INTERVALS,
+    SPOTIFY_DAILY_BUDGET,
     TIMEOUT,
     Fetcher,
     RateLimited,
@@ -38,7 +42,7 @@ from pipeline.enrich_parse import local_durations, parse_cache
 from pipeline.enrich_queue import load_names, seed_queue, spotify_cap
 
 ALL_APIS = ["spotify", "musicbrainz", "lastfm", "deezer"]
-SPOTIFY_MIN_PLAYS = 5
+SPOTIFY_MIN_PLAYS = 3
 
 
 def run(con: duckdb.DuckDBPyConnection, cache_path=None) -> None:
@@ -102,7 +106,8 @@ class Worker(threading.Thread):
         self.idle = True
 
 
-def make_fetchers(apis: list[str], cache: Cache, client_factory=httpx.Client) -> dict[str, Fetcher]:
+def make_fetchers(apis: list[str], cache: Cache, client_factory=httpx.Client,
+                  spotify_budget: int = SPOTIFY_DAILY_BUDGET) -> dict[str, Fetcher]:
     fetchers: dict[str, Fetcher] = {}
     for api in apis:
         kwargs: dict = {}
@@ -112,6 +117,7 @@ def make_fetchers(apis: list[str], cache: Cache, client_factory=httpx.Client) ->
                 continue
             client = client_factory(timeout=TIMEOUT)
             kwargs["auth"] = SpotifyAuth(client, config.SPOTIFY_CLIENT_ID, config.SPOTIFY_CLIENT_SECRET)
+            kwargs["budget"] = spotify_budget or None
         elif api == "musicbrainz":
             if not config.MUSICBRAINZ_CONTACT:
                 print("musicbrainz: MUSICBRAINZ_CONTACT not set, skipping")
@@ -137,7 +143,8 @@ def progress_line(cache: Cache, started: float) -> str:
 
 
 def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_s: float = 60.0,
-          spotify_min_plays: int = SPOTIFY_MIN_PLAYS, wait: bool = False) -> int:
+          spotify_min_plays: int = SPOTIFY_MIN_PLAYS, wait: bool = False,
+          spotify_budget: int = SPOTIFY_DAILY_BUDGET, spotify_artists: bool = False) -> int:
     if not config.MUSIC_DB or not config.MUSIC_DB.exists():
         print("MUSIC_DB not found. Run build_pipeline --to 02 first.", file=sys.stderr)
         return 2
@@ -147,9 +154,9 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
     except duckdb.Error:
         print("events table missing. Run build_pipeline --to 02 first.", file=sys.stderr)
         return 2
-    cache = Cache(cache_path)
+    cache = Cache(cache_path, held=set() if spotify_artists else HELD)
     cache.reset_failed()
-    fetchers = make_fetchers(apis, cache)
+    fetchers = make_fetchers(apis, cache, spotify_budget=spotify_budget)
     if not fetchers:
         return 2
     offered = seed_queue(con, cache, set(fetchers))
@@ -160,6 +167,8 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
             print(f"spotify: tracks with {spotify_min_plays}+ plays only (priority <= {cap})")
         else:
             cache.set_limit("spotify", None)
+        print(f"spotify: budget {spotify_budget or 'none'} requests / 24 h; artists "
+              + ("fetched" if spotify_artists else "held (--spotify-artists to fetch)"))
     names = load_names(con)
     con.close()
     print("seeded " + ", ".join(f"{a}.{e} {n}" for (a, e), n in offered.items()))
@@ -216,19 +225,23 @@ def status(cache_path=None) -> int:
     for api, n in over.items():
         cap, note = cache.limit(api) or (None, None)
         print(f"{api}: {n} queued rows past the floor ({note}, priority > {cap}); not fetched")
+    for (api, endpoint), n in cache.held_counts().items():
+        print(f"{api}.{endpoint}: {n} queued rows held; fetched only with --{api}-{endpoint}")
     for api in BUDGETS:
         if api in queued_by_api:
             used, _ = cache.requests_in_window(api)
-            print(f"{api}: {used} of {BUDGETS[api]} requests used in the last 24 h")
+            cap = f"of {BUDGETS[api]} " if BUDGETS[api] else ""
+            print(f"{api}: {used} {cap}requests used in the last 24 h")
     print("estimated time left (eligible queue / rate or daily budget, ignores items queued by later responses):")
+    held = cache.held_counts()
     for api, n in queued_by_api.items():
-        n -= over.get(api, 0)
+        n -= over.get(api, 0) + sum(h for (a, _), h in held.items() if a == api)
         wait = cache.pause_left(api)
         locked = ""
         if wait > 0:
             resume = datetime.now().astimezone() + timedelta(seconds=wait)
             locked = f"  (paused: {cache.pause_reason(api) or 'rate limit'} until {resume:%a %H:%M} local, then)"
-        if api in BUDGETS:
+        if BUDGETS.get(api):
             print(f"  {api:<12} {n / BUDGETS[api]:6.1f} days{locked}")
         else:
             print(f"  {api:<12} {n * INTERVALS[api] / 3600:6.1f} h{locked}")
@@ -244,6 +257,10 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--max-minutes", type=float, default=None)
     f.add_argument("--spotify-min-plays", type=int, default=SPOTIFY_MIN_PLAYS,
                    help="only fetch Spotify tracks with this many plays (1 = all)")
+    f.add_argument("--spotify-budget", type=int, default=SPOTIFY_DAILY_BUDGET,
+                   help="Spotify requests per rolling 24 h (0 = no budget, rely on QUOTA_EXCEEDED)")
+    f.add_argument("--spotify-artists", action="store_true",
+                   help="also fetch spotify.artists (genres only; held by default)")
     f.add_argument("--wait", action="store_true", help="sit out pauses instead of exiting")
     sub.add_parser("status", help="done / queued / failed per api and endpoint")
     args = ap.parse_args(argv)
@@ -253,7 +270,8 @@ def main(argv: list[str] | None = None) -> int:
     bad = [a for a in apis if a not in ALL_APIS]
     if bad:
         ap.error(f"unknown api: {','.join(bad)}")
-    return fetch(apis, args.max_minutes, spotify_min_plays=args.spotify_min_plays, wait=args.wait)
+    return fetch(apis, args.max_minutes, spotify_min_plays=args.spotify_min_plays, wait=args.wait,
+                 spotify_budget=args.spotify_budget, spotify_artists=args.spotify_artists)
 
 
 if __name__ == "__main__":
