@@ -29,3 +29,9 @@ site/src/.observablehq/cache/
 
 # wrangler local state
 .wrangler/
+
+# harness ephemeral session state
+.spec/.strike-counter.json
+.spec/.learn-staging.txt
+.spec/HANDOFF_PACKET.md
+.spec/.slice-checkpoint

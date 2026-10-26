@@ -4,6 +4,17 @@
 (Observable Framework on Cloudflare Workers static assets at music.charliechonguyen.com, behind
 Cloudflare Access).
 
+@.claude/harness-rules.md
+
+## Project-Specific Commands (harness)
+- Unit Tests: `uv run pytest -q`
+- Lint: `uv run ruff check`
+- Typecheck / UI build: `cd site && npm run build`
+
+Harness v2 (`.harness-version`) is synced from `cchonguyen/claude-harness-hub` (remote `harness-hub`,
+`/sync-harness`). `.spec/` tracks harness slices; `STATE.md` and `docs/PROJECT.md` stay the source
+of truth for waves, packets, data facts and decisions. Project rules below win over harness rules.
+
 Start every session by reading `STATE.md` (current wave, packet status, next command). Nothing else
 is needed to resume.
 
@@ -44,4 +55,6 @@ branch, merge, update STATE.md. A packet that fails its tests twice moves up one
 - 2026-10-22: Host on Workers static assets, not Pages. Reason: Pages always serves a public
   *.pages.dev copy, so privacy would need two Access apps; Workers can switch every extra URL off.
   Rejected: Pages + second Access app.
+- 2026-10-26: Installed claude-harness-hub v2.0 (hooks, commands, `.spec/`) merged into this file,
+  not replacing it. Reason: keep project rules and STATE.md workflow. Rejected: hub CLAUDE.md verbatim.
 - 2026-10-22: Matcher pass 3 + twin removal after real Gate 1 was 89.57% (now 95.81%). See STATE.md.
