@@ -1,6 +1,6 @@
 # music-story: project implementation notes
 
-As of 2026-10-23. `STATE.md` is still the place to resume work from, and `CLAUDE.md` holds the
+As of 2026-10-27. `STATE.md` is still the place to resume work from, and `CLAUDE.md` holds the
 working rules. This file collects the critical facts and decisions from both, plus the
 enrichment and Spotify-quota work, so they can be reviewed in one place.
 
@@ -167,8 +167,16 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 
 ## 6. Site and deploy
 
-- The site uses Observable Framework 1.13.4; the fixture build is 828 KB. Pages are `index`,
-  `artists`, `songs`, `genres`, `habits` and `places`.
+- The site uses Observable Framework 1.13.4; the fixture build was 828 KB before the explorer. Pages
+  are `index`, `artists`, `songs`, `genres`, `habits`, `places` and `explorer`.
+- The explorer (`explorer.md`, W10b) queries every play and skip in the browser. Its data is one Zstd
+  Parquet file from the `explorer_plays` view, written by `pipeline.site_data --parquet` and sorted by
+  artist, album, title and time so repeated names compress: 612 KB for the fixture's 59k rows; size
+  grows about linearly with rows. DuckDB-Wasm 1.29.0 comes from jsDelivr on that page only (about
+  9 MB compressed on the first visit, then cached), and it fetches its parquet extension from
+  extensions.duckdb.org. Only library code comes from those CDNs; the data stays behind Access.
+  Search matches both the shown names and the pipeline's normalised names, so no normalisation rules
+  are copied into JavaScript.
 - To deploy, run `cd site && npm run build`, then `npx wrangler deploy` from the repo root.
   `wrangler.jsonc` is assets-only with a custom domain route.
 - The fixture site went live on 2026-10-22 behind Access. Checks: `/`, `/index.html` and the data
@@ -189,6 +197,8 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-23 | Spotify floor of 3+ plays (`--spotify-min-plays 5` also available) | 10,544 URIs cover 76% of plays |
 | 2026-10-23 | `spotify.artists` held by default | Genres only, already covered by Last.fm and MB |
 | 2026-10-23 | Tail ISRCs from Deezer and MB search; `dim_album` fallback from play album names | ISRCs and albums no longer depend on the Spotify quota |
+| 2026-10-27 | Explorer loads DuckDB-Wasm from jsDelivr, not Framework's self-hosted DuckDBClient | Self-hosting puts `duckdb-eh.wasm` (34 MiB) and `duckdb-mvp.wasm` (39 MiB) in `dist/`, over the 25 MiB per-file limit of Workers static assets. Rejected: Arrow IPC with a plain-JS explorer (7 MB uncompressed vs 0.6 MB Parquet on the fixture, and no SQL) |
+| 2026-10-27 | Explorer rows include skips, flagged `is_skip` | Skip rate per artist or track needs them; counts and hours leave them out so they match the marts |
 
 ## 8. Open items
 
@@ -199,4 +209,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 - Platform `ios` is matched exactly, but 4,104 of 12,036 real `other` plays are iOS, iPhone or
   iPad strings. The proposed W1 fix is a case-insensitive match plus a fixture update.
 - When the fetch is done: real `build_pipeline`, then the site build with SITE_DB, then deploy.
+- The explorer has only been checked on the fixture, in a headless browser with the CDN files served
+  locally (this cloud container blocks jsDelivr and extensions.duckdb.org). Check it once on the
+  deployed site.
 - Remaining packets: W11 stats (real data), W12 export, W13 story.
