@@ -75,6 +75,14 @@ America/Vancouver.
 | 06 | W9 | Genre map (222 rows) and `track_genre` |
 | 07 | W5/W6 | Marts (`sql/marts/*.sql` in name order) |
 
+After a build, `uv run python -m pipeline.artist_genre export` writes `build/artist_genres.json`
+for Concert Tracker (concert.charliechonguyen.com): every artist with a genre (name, MBID, styles
+with weights summing to 1, which tag sources fed it) plus the `is_genre` rows of the genre map.
+Artist level only, from the same inputs and 15% rule as `track_genre`'s artist level. No schema
+change; the file is computed on demand and stays in `build/`. Charlie uploads it in Concert
+Tracker's Table tab, which keeps only acts seen live and uses the genre map to read MusicBrainz
+genres for acts this file does not cover.
+
 Fetching from APIs is not a build step. It is a separate, resumable job:
 `uv run python -m pipeline.enrich fetch`. It runs on Charlie's Mac, where the cache
 (`~/.cache/music-story/http_cache.sqlite`), `.env` and the real DuckDB persist.
@@ -198,6 +206,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-23 | `spotify.artists` held by default | Genres only, already covered by Last.fm and MB |
 | 2026-10-23 | Tail ISRCs from Deezer and MB search; `dim_album` fallback from play album names | ISRCs and albums no longer depend on the Spotify quota |
 | 2026-10-27 | Explorer loads DuckDB-Wasm from jsDelivr, not Framework's self-hosted DuckDBClient | Self-hosting puts `duckdb-eh.wasm` (34 MiB) and `duckdb-mvp.wasm` (39 MiB) in `dist/`, over the 25 MiB per-file limit of Workers static assets. Rejected: Arrow IPC with a plain-JS explorer (7 MB uncompressed vs 0.6 MB Parquet on the fixture, and no SQL) |
+| 2026-10-27 | Artist genres for Concert Tracker as an exported JSON file (`pipeline/artist_genre.py`), not a table or an API | The database stays on Charlie's Mac; Concert Tracker runs on Cloudflare and cannot reach it. Shipping the genre map with it keeps one curated map for both apps. Rejected: a published endpoint behind Access (couples the two deploys) |
 | 2026-10-27 | Explorer rows include skips, flagged `is_skip` | Skip rate per artist or track needs them; counts and hours leave them out so they match the marts |
 
 ## 8. Open items
