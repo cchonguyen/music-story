@@ -5,7 +5,7 @@ import sys
 import duckdb
 
 from pipeline import config
-from pipeline.site_data import mart_rows
+from pipeline.site_data import mart_rows, parquet_bytes
 
 YEAR_COLS = ["year", "plays", "skips", "listen_hours", "artists", "tracks", "new_artists", "new_tracks",
              "sessions"]
@@ -36,3 +36,38 @@ def test_site_db_env_is_honoured(tmp_path, monkeypatch):
 def test_site_filters_trim_large_marts(fixture_db_path):
     assert max(r["rank"] for r in mart_rows("track_year")) == 50
     assert min(r["window_plays"] for r in mart_rows("binge")) >= 15
+
+
+EXPLORER_COLS = ["ts", "artist", "title", "album", "artist_norm", "title_norm", "parent_genre", "style", "minutes",
+                 "is_skip", "platform", "country", "source"]
+
+
+def test_explorer_parquet_has_every_play_and_skip(fixture_db_path, fx, tmp_path):
+    out = tmp_path / "plays.parquet"
+    out.write_bytes(parquet_bytes("explorer_plays"))
+    con = duckdb.connect()
+    assert [r[0] for r in con.execute(f"DESCRIBE SELECT * FROM '{out}'").fetchall()] == EXPLORER_COLS
+    n, skips, named, minutes = con.execute(
+        f"SELECT count(*) FILTER (NOT is_skip), count(*) FILTER (is_skip), count(artist) + count(title), "
+        f"sum(minutes) FILTER (NOT is_skip) FROM '{out}'").fetchone()
+    plays, ms = fx.execute("SELECT count(*), sum(ms_imputed) FROM plays").fetchone()
+    assert (n, skips) == (plays, fx.execute("SELECT count(*) FROM skips").fetchone()[0])
+    assert named == 2 * (plays + skips)
+    assert abs(minutes - ms / 60000) / (ms / 60000) < 1e-4
+    codec = con.execute(f"SELECT DISTINCT compression FROM parquet_metadata('{out}')").fetchall()
+    assert codec == [("ZSTD",)]
+
+
+def test_explorer_parquet_is_sorted_by_artist(fixture_db_path, tmp_path):
+    out = tmp_path / "plays.parquet"
+    out.write_bytes(parquet_bytes("explorer_plays"))
+    artists = [r[0] for r in duckdb.sql(f"SELECT artist FROM '{out}'").fetchall()]
+    assert artists == sorted(artists)
+
+
+def test_cli_writes_parquet(fixture_db_path, tmp_path):
+    out = subprocess.run([sys.executable, "-m", "pipeline.site_data", "--parquet", "explorer_plays"],
+                         cwd=config.REPO_ROOT, capture_output=True, check=True).stdout
+    assert out[:4] == b"PAR1"
+    loader = config.REPO_ROOT / "site" / "src" / "data" / "plays_explorer.parquet.sh"
+    assert "pipeline.site_data --parquet explorer_plays" in loader.read_text()
