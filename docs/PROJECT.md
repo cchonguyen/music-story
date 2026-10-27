@@ -1,6 +1,6 @@
 # music-story: project implementation notes
 
-As of 2026-10-23. `STATE.md` is still the place to resume work from, and `CLAUDE.md` holds the
+As of 2026-10-27. `STATE.md` is still the place to resume work from, and `CLAUDE.md` holds the
 working rules. This file collects the critical facts and decisions from both, plus the
 enrichment and Spotify-quota work, so they can be reviewed in one place.
 
@@ -74,6 +74,7 @@ America/Vancouver.
 | 05 | W8 | Sessions (20 min gap), country imputation, plays and skips |
 | 06 | W9 | Genre map (222 rows) and `track_genre` |
 | 07 | W5/W6 | Marts (`sql/marts/*.sql` in name order) |
+| 08 | W12 | Privacy export: `export_plays`, the row-level plays for the explorer (`08_export.sql`) |
 
 Fetching from APIs is not a build step. It is a separate, resumable job:
 `uv run python -m pipeline.enrich fetch`. It runs on Charlie's Mac, where the cache
@@ -169,6 +170,12 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 
 - The site uses Observable Framework 1.13.4; the fixture build is 828 KB. Pages are `index`,
   `artists`, `songs`, `genres`, `habits` and `places`.
+- Privacy export (W12). The explorer's row-level data is `export_plays`, written as Zstd Parquet by
+  `uv run python -m pipeline.export` (SITE_DB, else the fixture) through the loader
+  `site/src/data/plays_explorer.parquet.sh`. The gate drops incognito plays, keeps time only as
+  local date, hour and ISO weekday, and ships no ids, IPs, raw platform strings or match
+  diagnostics. Skips are not exported. The fixture file is 230 KB for 47.5k rows. The loader only
+  runs once a page attaches `data/plays_explorer.parquet`; no explorer page exists yet.
 - To deploy, run `cd site && npm run build`, then `npx wrangler deploy` from the repo root.
   `wrangler.jsonc` is assets-only with a custom domain route.
 - The fixture site went live on 2026-10-22 behind Access. Checks: `/`, `/index.html` and the data
@@ -189,6 +196,8 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-23 | Spotify floor of 3+ plays (`--spotify-min-plays 5` also available) | 10,544 URIs cover 76% of plays |
 | 2026-10-23 | `spotify.artists` held by default | Genres only, already covered by Last.fm and MB |
 | 2026-10-23 | Tail ISRCs from Deezer and MB search; `dim_album` fallback from play album names | ISRCs and albums no longer depend on the Spotify quota |
+| 2026-10-27 | `export_plays` is built by step 08, not declared in `schema.sql`; Parquet via a site loader, not a committed file | It is derived output like the marts, so the contract stays unchanged; the loader keeps real rows out of the repo |
+| 2026-10-27 | Export drops incognito plays and every timestamp and order-encoding id; one genre per row (highest weight) | The plan's privacy gate; one genre keeps the file flat for DuckDB-Wasm |
 
 ## 8. Open items
 
@@ -199,4 +208,8 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 - Platform `ios` is matched exactly, but 4,104 of 12,036 real `other` plays are iOS, iPhone or
   iPad strings. The proposed W1 fix is a case-insensitive match plus a fixture update.
 - When the fetch is done: real `build_pipeline`, then the site build with SITE_DB, then deploy.
-- Remaining packets: W11 stats (real data), W12 export, W13 story.
+- Marts still count incognito plays in their aggregates (only the row-level export drops them),
+  so a top-50 label can name an incognito-only track. Decide with Charlie whether marts should
+  drop them too.
+- The explorer page (DuckDB-Wasm over `plays_explorer.parquet`) is not built yet.
+- Remaining packets: W11 stats (real data), W13 story.

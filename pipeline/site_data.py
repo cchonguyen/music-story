@@ -24,13 +24,19 @@ INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_tr
                 "track_genre", "genre_map", "fixture_scenarios"]
 
 
-def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb.DuckDBPyConnection:
-    """In-memory copy of the fixture's input tables with marts built (one file, or all in name order)."""
+def fixture_inputs(fixture_db_path: Path) -> duckdb.DuckDBPyConnection:
+    """In-memory copy of the fixture's input tables (the expected stage 1-3 output)."""
     con = duckdb.connect()
     con.execute(f"ATTACH '{fixture_db_path}' AS fx (READ_ONLY)")
     for t in INPUT_TABLES:
         con.execute(f"CREATE TABLE {t} AS SELECT * FROM fx.{t}")
     con.execute("DETACH fx")
+    return con
+
+
+def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb.DuckDBPyConnection:
+    """In-memory copy of the fixture's input tables with marts built (one file, or all in name order)."""
+    con = fixture_inputs(fixture_db_path)
     marts = config.SQL_DIR / "marts"
     files = [marts / mart_file] if mart_file else sorted(marts.glob("*.sql"))
     for f in files:

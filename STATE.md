@@ -16,6 +16,7 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W8 sessions `sql/05_sessions.sql` | Sonnet | done (main); lead fixed test (listen_ms sum) |
 | W9 genre `pipeline/genre.py` + csv | Sonnet | done (main); lead fix (MB genre join), 222-row map |
 | W10 chapters + charts | Sonnet | done (main), first try; site_data trims top-N marts |
+| W12 privacy export `sql/08_export.sql` | Haiku | done (PR), lead; Zstd Parquet loader, 230 KB fixture |
 
 Next:
 1. Fetch 2026-10-23: Last.fm done. Spotify locked out after ~600 req (until Fri 23 Oct 14:44 PT).
