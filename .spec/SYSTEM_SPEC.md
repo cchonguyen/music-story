@@ -62,7 +62,8 @@ needs without opening those files.
     ISRC, else `artist_norm::full_norm`), `bridge_track_artist` (`track_id`, `artist_id`, `role`).
   - Facts: `sessions` (`session_id`), `plays` (`play_id` = `events.event_id`), `skips`.
   - Genre: `genre_map` (`tag`), `track_genre` (`track_id`, `parent_genre`, `style`).
-- **Marts:** `sql/marts/10_simple.sql`, `20_trap.sql`, `30_labels.sql`, `40_explorer.sql`
+- **Marts:** `sql/marts/10_simple.sql`, `sql/marts/20_trap.sql`, `sql/marts/30_labels.sql`,
+  `sql/marts/40_explorer.sql`
   (`explorer_plays` view feeding the Parquet export).
 - **Slice split rule:** pipeline work (`sql/`, `pipeline/`, `tests/`) is `[CORE / DATA]` and verified
   with `uv run pytest -q` + `uv run ruff check`. Page work (`site/src/*.md`,
