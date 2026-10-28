@@ -28,6 +28,8 @@ Next:
    -> deezer.id (ISRC, album) -> MB isrc, and MB search; dims uses them and builds fallback albums
    from play album names (schema: enr_deezer_match, 2026-10-23). fetch exits
    when only paused apis remain (`--wait` sits it out). Charlie reruns `fetch` daily.
+   2026-10-28: `--spotify-cover` (default 0.80, Charlie's pick) caps Spotify by share of plays; `status` and the dims step print
+   play-weighted coverage. 80% = top 13,234 URIs, ~10k lookups left (docs/PROJECT.md section 8). Freeze when exhausted.
 2. Fixture site LIVE 2026-10-22 behind Access (team winter-wind-069c, allow charliechonguyen@gmail.com).
    Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
    Real-data deploy: build with SITE_DB=build/music.duckdb (fixture otherwise).

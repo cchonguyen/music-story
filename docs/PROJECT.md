@@ -167,7 +167,7 @@ calls, with no daily cap on either.
 git pull
 uv run python -m pipeline.enrich fetch          # exits when only paused APIs remain
 uv run python -m pipeline.enrich status         # done/queued/failed, floor, held rows, budget, pauses
-# Options: --spotify-min-plays 5 | --spotify-budget 0 | --spotify-artists | --wait
+# Options: --spotify-min-plays 5 | --spotify-cover 0.80 (default) | --spotify-budget 0 | --spotify-artists | --wait
 ```
 
 When the fetch is done, run `build_pipeline` on the real data, then build the site with
@@ -204,6 +204,8 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-23 | Daily Spotify budget of 500 as a probe; pause on QUOTA_EXCEEDED | The quota is a per-account count, so pacing does not protect it |
 | 2026-10-23 | Spotify floor of 3+ plays (`--spotify-min-plays 5` also available) | 10,544 URIs cover 76% of plays |
 | 2026-10-23 | `spotify.artists` held by default | Genres only, already covered by Last.fm and MB |
+| 2026-10-28 | Cover target set to 80% (default `--spotify-cover 0.80`, top 13,234 URIs; Spotify tail lookups past that rank go to Deezer/MusicBrainz search). Supersedes the 98% row below | Charlie's call: 98% needs ~30k lookups (months); 80% needs ~10k (about 3 weeks at 500/day) |
+| 2026-10-28 | Charlie approved freezing the dataset once fetched Spotify tracks cover ~98% of plays (`--spotify-cover`); `status` and `dims` report the exact play coverage | A week of 500/day reached 2,814 of 35,646 URIs (48% of Spotify plays); the long tail is flat, so see section 8 |
 | 2026-10-23 | Tail ISRCs from Deezer and MB search; `dim_album` fallback from play album names | ISRCs and albums no longer depend on the Spotify quota |
 | 2026-10-27 | Explorer loads DuckDB-Wasm from jsDelivr, not Framework's self-hosted DuckDBClient | Self-hosting puts `duckdb-eh.wasm` (34 MiB) and `duckdb-mvp.wasm` (39 MiB) in `dist/`, over the 25 MiB per-file limit of Workers static assets. Rejected: Arrow IPC with a plain-JS explorer (7 MB uncompressed vs 0.6 MB Parquet on the fixture, and no SQL) |
 | 2026-10-27 | Artist genres for Concert Tracker as an exported JSON file (`pipeline/artist_genre.py`), not a table or an API | The database stays on Charlie's Mac; Concert Tracker runs on Cloudflare and cannot reach it. Shipping the genre map with it keeps one curated map for both apps. Rejected: a published endpoint behind Access (couples the two deploys) |
@@ -211,8 +213,13 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 
 ## 8. Open items
 
-- Run the first budgeted Spotify fetch after the unlock. Use `status` to learn the real quota and
-  tune `--spotify-budget`.
+- Spotify cover target (2026-10-28, now 80% by default). Measured on the export: 98% of Spotify plays needs the top
+  33,039 of 35,646 URIs (95%: 29,127; 90%: 22,607; 80%: 13,234). The 2,814 fetched so far hold 48%.
+  So a 98% Spotify cover still leaves about 30k lookups, roughly two months at 500/day, and does
+  not make the fetch finish soon. Plays count as enriched when any source supplies the ISRC, and
+  Deezer and MusicBrainz search already finished their tail (28k and 24k keys). Run
+  `build_pipeline --from 03 --to 04` and read the `dims: coverage by plays` line for the real
+  figure before choosing a Spotify cap.
 - Review the genre map parents with Charlie: blues to jazz, hardcore to metal, reggae/dub/ska to
   world.
 - Platform `ios` is matched exactly, but 4,104 of 12,036 real `other` plays are iOS, iPhone or
