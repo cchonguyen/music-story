@@ -129,3 +129,9 @@ def test_without_spotify_tracks_take_deezer_isrcs_and_play_albums(fixture_db_pat
     assert agreement(con, "SELECT album_id IS NOT NULL FROM dim_track") >= 0.9
     assert scalar(con, "SELECT count(*) FROM dim_track t ANTI JOIN dim_album a USING (album_id) "
                        "WHERE t.album_id IS NOT NULL") == 0
+
+
+def test_coverage_line_counts_plays(con):
+    line = dims.coverage_line(con)
+    assert "coverage by plays" in line and "isrc from any source" in line and "album" in line
+    assert "n/a" not in line
