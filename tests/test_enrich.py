@@ -423,7 +423,7 @@ DZ_TRACK = {"id": 13, "isrc": "USDZ1", "bpm": 120, "gain": -8.1, "duration": 200
 
 def test_deezer_search_request_and_cascade():
     req = build_request("deezer", "search", "a::song", {"track": {"a::song": ("A", 'So"ng')}})
-    assert req.url == "https://api.deezer.com/search" and req.params["q"] == 'artist:"A" track:"So ng"'
+    assert req.url == "https://api.deezer.com/search" and req.params["q"] == "A So ng"
     assert build_request("deezer", "id", "13").url == "https://api.deezer.com/track/13"
     assert cascade("deezer", "search", "a::song", 200, json.dumps(DZ_SEARCH), 7) == [("deezer", "id", "13", 7)]
     assert cascade("deezer", "search", "b::song", 200, json.dumps(DZ_SEARCH), 7) == []
