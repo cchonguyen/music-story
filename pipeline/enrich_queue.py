@@ -87,6 +87,18 @@ def spotify_cap(con: duckdb.DuckDBPyConnection, min_plays: int) -> int:
         GROUP BY 1 HAVING count(*) >= ?)""", [min_plays]).fetchone()[0]
 
 
+def spotify_cap_cover(con: duckdb.DuckDBPyConnection, cover: float) -> tuple[int, float]:
+    """Smallest Spotify track priority whose tracks (most played first, as seeded) hold at least
+    `cover` (0-1) of all Spotify-URI plays; returns (priority, exact share reached)."""
+    rank, share = con.execute("""
+        WITH t AS (SELECT split_part(track_uri, ':', 3) AS k, count(*) AS n FROM events
+                   WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1),
+        r AS (SELECT n, row_number() OVER (ORDER BY n DESC, k) AS rk,
+                     sum(n) OVER (ORDER BY n DESC, k) AS cum, sum(n) OVER () AS tot FROM t)
+        SELECT rk, cum / tot FROM r WHERE cum >= ? * tot ORDER BY rk LIMIT 1""", [cover]).fetchone()
+    return int(rank), float(share)
+
+
 def load_names(con: duckdb.DuckDBPyConnection) -> dict:
     """Most common raw spellings per norm key, used to build Last.fm / MusicBrainz requests."""
     track = {

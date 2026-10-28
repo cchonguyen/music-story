@@ -339,6 +339,23 @@ STEPS = [
        FROM _t_remix x JOIN dim_artist ar USING (artist_norm)""",
 ]
 
+def coverage_line(con: duckdb.DuckDBPyConnection) -> str:
+    """Share of all events (plays) by enrichment: an ISRC from any source, an album, and a Spotify
+    track response (status 200). Counts only."""
+    total, isrc, album, sp, sp_all = con.execute("""
+        SELECT count(*), count(*) FILTER (WHERE d.isrc IS NOT NULL), count(*) FILTER (WHERE d.album_id IS NOT NULL),
+               count(*) FILTER (WHERE s.track_uri IS NOT NULL), count(*) FILTER (WHERE e.track_uri IS NOT NULL)
+        FROM events e
+        LEFT JOIN track_uri_map u ON u.track_uri = e.track_uri
+        LEFT JOIN track_key_map k ON e.track_uri IS NULL AND k.artist_norm = e.artist_norm
+                                  AND k.full_norm = e.full_norm
+        LEFT JOIN dim_track d ON d.track_id = coalesce(u.track_id, k.track_id)
+        LEFT JOIN enr_spotify_track s ON s.track_uri = e.track_uri AND s.http_status = 200""").fetchone()
+    pct = lambda n, d: f"{100 * n / d:.2f}%" if d else "n/a"
+    return (f"  dims: coverage by plays ({total} events): isrc from any source {pct(isrc, total)}, "
+            f"album {pct(album, total)}; spotify response {pct(sp, sp_all)} of the {sp_all} Spotify plays")
+
+
 def run(con: duckdb.DuckDBPyConnection) -> None:
     for t in TABLES:
         con.execute(f"DELETE FROM {t}")
@@ -356,3 +373,4 @@ def run(con: duckdb.DuckDBPyConnection) -> None:
     print(f"  dims: tracks isrc={kinds.get('isrc', 0)} mb_isrc={kinds.get('mb_isrc', 0)} "
           f"dz_isrc={kinds.get('dz_isrc', 0)} fallback={kinds.get('fallback', 0)}")
     print("  dims: " + " ".join(f"{t}={n}" for t, n in counts.items()))
+    print(coverage_line(con))
