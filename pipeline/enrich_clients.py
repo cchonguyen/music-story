@@ -110,7 +110,8 @@ def build_request(api: str, endpoint: str, key: str, names: dict | None = None,
     if api == "deezer":
         if endpoint == "search":
             artist, title = names.get("track", {}).get(key, tuple(key.split("::", 1)))
-            q = f'artist:"{_unquote(artist)}" track:"{_unquote(title)}"'
+            # Deezer returns nothing for field syntax (artist:"x" track:"y"); a plain query works.
+            q = f"{_unquote(artist)} {_unquote(title)}"
             return Request("https://api.deezer.com/search", {"q": q, "limit": 10})
         if endpoint == "id":
             return Request(f"https://api.deezer.com/track/{key}")
