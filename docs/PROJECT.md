@@ -168,6 +168,7 @@ git pull
 uv run python -m pipeline.enrich fetch          # exits when only paused APIs remain
 uv run python -m pipeline.enrich status         # done/queued/failed, floor, held rows, budget, pauses
 # Options: --spotify-min-plays 5 | --spotify-cover 0.80 (default) | --spotify-budget 0 | --spotify-artists | --wait
+uv run python scripts/enrich_audit.py           # read-only: Deezer/MB search outcomes, what the Spotify queue still adds
 ```
 
 When the fetch is done, run `build_pipeline` on the real data, then build the site with
