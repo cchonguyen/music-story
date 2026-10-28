@@ -14,7 +14,7 @@ from helpers import fresh_db, scalar
 from pipeline import enrich
 from pipeline.enrich_cache import Cache
 from pipeline.enrich_clients import Fetcher, RateLimited, build_request, cascade
-from pipeline.enrich_queue import seed_queue, spotify_cap, spotify_cap_cover
+from pipeline.enrich_queue import seed_queue, spotify_cap, spotify_cap_cover, spotify_tail
 
 
 def make_fetcher(handler, cache, api="deezer", sleeps=None, **kwargs):
@@ -369,10 +369,10 @@ def test_cli_passes_spotify_flags(monkeypatch):
     enrich.main(["fetch", "--spotify-min-plays", "5", "--spotify-budget", "0", "--spotify-artists",
                  "--spotify-cover", "0.98"])
     assert seen == {"spotify_min_plays": 5, "wait": False, "spotify_budget": 0, "spotify_artists": True,
-                    "spotify_cover": 0.98}
+                    "spotify_cover": None}  # an explicit floor replaces the cover
     enrich.main(["fetch"])
     assert seen["spotify_min_plays"] == 3 and seen["spotify_budget"] == 500 and not seen["spotify_artists"]
-    assert seen["spotify_cover"] is None
+    assert seen["spotify_cover"] == 0.80
 
 
 def test_old_cache_gains_pause_reason(tmp_path):
@@ -489,6 +489,12 @@ def test_cover_cap_stops_at_the_requested_share_of_plays():
         order.append(item[1])
         cache.put("spotify", item[0], item[1], 404, "{}")
     assert order == ["popular", "middle"] and cache.over_limit() == {"spotify": 1}
+
+
+def test_spotify_tail_lists_keys_past_the_cap():
+    con = _events_db()
+    assert len(spotify_tail(con, 2)) == len(spotify_tail(con, 3)) + 1
+    assert spotify_tail(con, 3) == []
 
 
 def test_status_reports_spotify_play_coverage(tmp_path, monkeypatch):
