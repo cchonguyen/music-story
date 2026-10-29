@@ -16,7 +16,8 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W8 sessions `sql/05_sessions.sql` | Sonnet | done (main); lead fixed test (listen_ms sum) |
 | W9 genre `pipeline/genre.py` + csv | Sonnet | done (main); lead fix (MB genre join), 222-row map |
 | W10 chapters + charts | Sonnet | done (main), first try; site_data trims top-N marts |
-| W12 privacy export `sql/08_export.sql` | Haiku | done (PR), lead; Zstd Parquet loader, 230 KB fixture |
+| Concert Tracker export `pipeline/artist_genre.py` | Opus lead | PR open 2026-10-27; `export` -> build/artist_genres.json |
+| W10b explorer page | Opus lead | PR open 2026-10-27; DuckDB-Wasm from jsDelivr (self-hosted wasm > 25 MiB Workers limit). W12 gate applied 2026-10-29: no incognito, time as day/hour/weekday |
 
 Next:
 1. Fetch 2026-10-23: Last.fm done. Spotify locked out after ~600 req (until Fri 23 Oct 14:44 PT).
@@ -27,6 +28,8 @@ Next:
    -> deezer.id (ISRC, album) -> MB isrc, and MB search; dims uses them and builds fallback albums
    from play album names (schema: enr_deezer_match, 2026-10-23). fetch exits
    when only paused apis remain (`--wait` sits it out). Charlie reruns `fetch` daily.
+   2026-10-28: `--spotify-cover` (default 0.80, Charlie's pick) caps Spotify by share of plays; `status` and the dims step print
+   play-weighted coverage. 80% = top 13,234 URIs, ~10k lookups left (docs/PROJECT.md section 8). Freeze when exhausted.
 2. Fixture site LIVE 2026-10-22 behind Access (team winter-wind-069c, allow charliechonguyen@gmail.com).
    Verified: /, /index.html, /_file/data/year.json all 302 to Access login; workers.dev 404.
    Real-data deploy: build with SITE_DB=build/music.duckdb (fixture otherwise).

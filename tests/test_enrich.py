@@ -14,7 +14,7 @@ from helpers import fresh_db, scalar
 from pipeline import enrich
 from pipeline.enrich_cache import Cache
 from pipeline.enrich_clients import Fetcher, RateLimited, build_request, cascade
-from pipeline.enrich_queue import seed_queue, spotify_cap
+from pipeline.enrich_queue import seed_queue, spotify_cap, spotify_cap_cover, spotify_tail
 
 
 def make_fetcher(handler, cache, api="deezer", sleeps=None, **kwargs):
@@ -366,10 +366,13 @@ def test_zero_budget_never_stops_but_still_counts():
 def test_cli_passes_spotify_flags(monkeypatch):
     seen = {}
     monkeypatch.setattr(enrich, "fetch", lambda apis, mm, **kw: seen.update(kw) or 0)
-    enrich.main(["fetch", "--spotify-min-plays", "5", "--spotify-budget", "0", "--spotify-artists"])
-    assert seen == {"spotify_min_plays": 5, "wait": False, "spotify_budget": 0, "spotify_artists": True}
+    enrich.main(["fetch", "--spotify-min-plays", "5", "--spotify-budget", "0", "--spotify-artists",
+                 "--spotify-cover", "0.98"])
+    assert seen == {"spotify_min_plays": 5, "wait": False, "spotify_budget": 0, "spotify_artists": True,
+                    "spotify_cover": None}  # an explicit floor replaces the cover
     enrich.main(["fetch"])
     assert seen["spotify_min_plays"] == 3 and seen["spotify_budget"] == 500 and not seen["spotify_artists"]
+    assert seen["spotify_cover"] == 0.80
 
 
 def test_old_cache_gains_pause_reason(tmp_path):
@@ -420,7 +423,7 @@ DZ_TRACK = {"id": 13, "isrc": "USDZ1", "bpm": 120, "gain": -8.1, "duration": 200
 
 def test_deezer_search_request_and_cascade():
     req = build_request("deezer", "search", "a::song", {"track": {"a::song": ("A", 'So"ng')}})
-    assert req.url == "https://api.deezer.com/search" and req.params["q"] == 'artist:"A" track:"So ng"'
+    assert req.url == "https://api.deezer.com/search" and req.params["q"] == "A So ng"
     assert build_request("deezer", "id", "13").url == "https://api.deezer.com/track/13"
     assert cascade("deezer", "search", "a::song", 200, json.dumps(DZ_SEARCH), 7) == [("deezer", "id", "13", 7)]
     assert cascade("deezer", "search", "b::song", 200, json.dumps(DZ_SEARCH), 7) == []
@@ -471,3 +474,37 @@ def test_parse_builds_deezer_matches(tmp_path):
     assert rows == [("a::song", 13, "USDZ1", "Alb", "2004-02-01", 200000, 200),
                     ("b::none", None, None, None, None, None, 404)]
     assert con.execute("SELECT deezer_id, bpm FROM enr_deezer_track WHERE isrc = 'USDZ1'").fetchone() == (13, 120)
+
+
+def test_cover_cap_stops_at_the_requested_share_of_plays():
+    con = _events_db()  # popular 3 plays, middle 2, rare 1 of 6 Spotify plays
+    assert spotify_cap_cover(con, 0.5) == (1, 0.5)
+    assert spotify_cap_cover(con, 0.8) == (2, 5 / 6)
+    assert spotify_cap_cover(con, 0.98) == (3, 1.0)
+    cache = Cache(":memory:")
+    seed_queue(con, cache, {"spotify"})
+    cache.set_limit("spotify", spotify_cap_cover(con, 0.8)[0], "cover=0.8")
+    order = []
+    while (item := cache.next_item("spotify")):
+        order.append(item[1])
+        cache.put("spotify", item[0], item[1], 404, "{}")
+    assert order == ["popular", "middle"] and cache.over_limit() == {"spotify": 1}
+
+
+def test_spotify_tail_lists_keys_past_the_cap():
+    con = _events_db()
+    assert len(spotify_tail(con, 2)) == len(spotify_tail(con, 3)) + 1
+    assert spotify_tail(con, 3) == []
+
+
+def test_status_reports_spotify_play_coverage(tmp_path, monkeypatch):
+    db = tmp_path / "music.duckdb"
+    con = _events_db()
+    con.execute(f"ATTACH '{db}' AS f")
+    con.execute(f"COPY FROM DATABASE {con.execute('SELECT current_database()').fetchone()[0]} TO f")
+    con.close()
+    monkeypatch.setattr(enrich.config, "MUSIC_DB", db)
+    cache = Cache(":memory:")
+    put(cache, "spotify", "tracks", "popular", 200, {})
+    put(cache, "spotify", "tracks", "rare", 404, None)
+    assert enrich.spotify_play_coverage(cache) == "spotify: 4 of 6 Spotify plays (66.67%) have a stored track response"

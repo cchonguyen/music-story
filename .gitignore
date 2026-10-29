@@ -36,3 +36,7 @@ site/src/.observablehq/cache/
 .spec/.learn-staging.txt
 .spec/HANDOFF_PACKET.md
 .spec/.slice-checkpoint
+.spec/.vibe-checkpoint.json
+
+# external review dossier (prep-review)
+audit-dossier.md

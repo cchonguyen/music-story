@@ -55,10 +55,21 @@ _TAIL_SQL = f"""
 TAIL_ENDPOINTS = [("musicbrainz", "search"), ("deezer", "search")]
 
 
+def spotify_tail(con: duckdb.DuckDBPyConnection, cap: int) -> list[str]:
+    """artist/title keys whose most played Spotify track ranks past `cap` (the Spotify priority)."""
+    return [r[0] for r in con.execute(f"""
+        WITH u AS (SELECT track_uri, split_part(track_uri, ':', 3) AS k, count(*) AS n FROM events
+                   WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1, 2),
+        r AS (SELECT track_uri, row_number() OVER (ORDER BY n DESC, k) AS rk FROM u)
+        SELECT {TRACK_KEY} AS key FROM events JOIN r USING (track_uri)
+        GROUP BY 1 HAVING min(rk) > ? ORDER BY count(*) DESC, 1""", [cap]).fetchall() if r[0]]
+
+
 def seed_queue(con: duckdb.DuckDBPyConnection, cache: Cache, apis: set[str],
-               spotify_min_plays: int = 1) -> dict[tuple[str, str], int]:
+               spotify_min_plays: int = 1, spotify_cap: int | None = None) -> dict[tuple[str, str], int]:
     """Insert root items for the chosen apis; returns how many were offered per endpoint.
-    With a Spotify play floor above 1, the tail under it is also queued for artist/title search."""
+    With a Spotify play floor above 1 or a priority cap, the tail past it is also queued for
+    artist/title search."""
     offered: dict[tuple[str, str], int] = {}
     for (api, endpoint), sql in _SQL.items():
         if api not in apis:
@@ -70,8 +81,11 @@ def seed_queue(con: duckdb.DuckDBPyConnection, cache: Cache, apis: set[str],
         items: list[QueueItem] = [(api, endpoint, k, rank) for rank, k in enumerate(keys, 1)]
         cache.enqueue(items)
         offered[(api, endpoint)] = len(items)
-    if spotify_min_plays > 1:
-        tail = [r[0] for r in con.execute(_TAIL_SQL, [spotify_min_plays]).fetchall() if r[0]]
+    if spotify_cap is not None or spotify_min_plays > 1:
+        if spotify_cap is not None:
+            tail = spotify_tail(con, spotify_cap)
+        else:
+            tail = [r[0] for r in con.execute(_TAIL_SQL, [spotify_min_plays]).fetchall() if r[0]]
         for api, endpoint in TAIL_ENDPOINTS:
             if api in apis:
                 cache.enqueue([(api, endpoint, k, TAIL_OFFSET + rank) for rank, k in enumerate(tail, 1)])
@@ -85,6 +99,18 @@ def spotify_cap(con: duckdb.DuckDBPyConnection, min_plays: int) -> int:
     return con.execute("""SELECT count(*) FROM (
         SELECT split_part(track_uri, ':', 3) FROM events WHERE track_uri LIKE 'spotify:track:%'
         GROUP BY 1 HAVING count(*) >= ?)""", [min_plays]).fetchone()[0]
+
+
+def spotify_cap_cover(con: duckdb.DuckDBPyConnection, cover: float) -> tuple[int, float]:
+    """Smallest Spotify track priority whose tracks (most played first, as seeded) hold at least
+    `cover` (0-1) of all Spotify-URI plays; returns (priority, exact share reached)."""
+    rank, share = con.execute("""
+        WITH t AS (SELECT split_part(track_uri, ':', 3) AS k, count(*) AS n FROM events
+                   WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1),
+        r AS (SELECT n, row_number() OVER (ORDER BY n DESC, k) AS rk,
+                     sum(n) OVER (ORDER BY n DESC, k) AS cum, sum(n) OVER () AS tot FROM t)
+        SELECT rk, cum / tot FROM r WHERE cum >= ? * tot ORDER BY rk LIMIT 1""", [cover]).fetchone()
+    return int(rank), float(share)
 
 
 def load_names(con: duckdb.DuckDBPyConnection) -> dict:

@@ -5,9 +5,10 @@
                                            [--spotify-artists] [--wait]
     uv run python -m pipeline.enrich status
 
+Spotify takes tracks most played first until they hold --spotify-cover of Spotify plays (default 0.80);
+--spotify-min-plays N replaces that with a plain floor.
 Spotify spends at most --spotify-budget requests (env SPOTIFY_DAILY_BUDGET, default 500; 0 = no
-budget, rely on the QUOTA_EXCEEDED pause) per rolling 24 h, only on tracks with
---spotify-min-plays plays or more (default 3). spotify.artists rows stay queued but are fetched
+budget, rely on the QUOTA_EXCEEDED pause) per rolling 24 h. spotify.artists rows stay queued but are fetched
 only with --spotify-artists. When every api left is paused, fetch exits and prints when to rerun;
 --wait sits it out instead.
 
@@ -39,10 +40,11 @@ from pipeline.enrich_clients import (
     build_request,
 )
 from pipeline.enrich_parse import local_durations, parse_cache
-from pipeline.enrich_queue import load_names, seed_queue, spotify_cap
+from pipeline.enrich_queue import load_names, seed_queue, spotify_cap, spotify_cap_cover
 
 ALL_APIS = ["spotify", "musicbrainz", "lastfm", "deezer"]
 SPOTIFY_MIN_PLAYS = 3
+SPOTIFY_COVER = 0.80  # default stop: most played tracks until they hold this share of Spotify plays
 
 
 def run(con: duckdb.DuckDBPyConnection, cache_path=None) -> None:
@@ -144,7 +146,8 @@ def progress_line(cache: Cache, started: float) -> str:
 
 def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_s: float = 60.0,
           spotify_min_plays: int = SPOTIFY_MIN_PLAYS, wait: bool = False,
-          spotify_budget: int = SPOTIFY_DAILY_BUDGET, spotify_artists: bool = False) -> int:
+          spotify_budget: int = SPOTIFY_DAILY_BUDGET, spotify_artists: bool = False,
+          spotify_cover: float | None = SPOTIFY_COVER) -> int:
     if not config.MUSIC_DB or not config.MUSIC_DB.exists():
         print("MUSIC_DB not found. Run build_pipeline --to 02 first.", file=sys.stderr)
         return 2
@@ -159,9 +162,17 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
     fetchers = make_fetchers(apis, cache, spotify_budget=spotify_budget)
     if not fetchers:
         return 2
-    offered = seed_queue(con, cache, set(fetchers), spotify_min_plays)
+    cover_cap = share = None
+    if "spotify" in fetchers and spotify_cover:
+        cover_cap, share = spotify_cap_cover(con, spotify_cover)
+    offered = seed_queue(con, cache, set(fetchers), spotify_min_plays, cover_cap)
     if "spotify" in fetchers:
-        if spotify_min_plays > 1:
+        if spotify_cover:
+            cap = cover_cap
+            cache.set_limit("spotify", cap, f"cover={spotify_cover}")
+            print(f"spotify: most played tracks up to {share:.2%} of Spotify plays (priority <= {cap}); "
+                  "the rest stay unenriched")
+        elif spotify_min_plays > 1:
             cap = spotify_cap(con, spotify_min_plays)
             cache.set_limit("spotify", cap, f"min_plays={spotify_min_plays}")
             print(f"spotify: tracks with {spotify_min_plays}+ plays only (priority <= {cap})")
@@ -213,6 +224,25 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
     return 0
 
 
+def spotify_play_coverage(cache: Cache) -> str | None:
+    """Share of Spotify-URI plays whose track has a stored Spotify response (needs MUSIC_DB events)."""
+    if not config.MUSIC_DB or not config.MUSIC_DB.exists():
+        return None
+    done = [k for k, st, _b, _t in cache.rows("spotify", "tracks") if st in (200, 404)]
+    con = duckdb.connect(str(config.MUSIC_DB), read_only=True)
+    try:
+        hit, total = con.execute(
+            """SELECT count(*) FILTER (WHERE k = ANY(?::VARCHAR[])), count(*) FROM
+               (SELECT split_part(track_uri, ':', 3) AS k FROM events WHERE track_uri LIKE 'spotify:track:%')""",
+            [done]).fetchone()
+    except duckdb.Error:
+        return None
+    finally:
+        con.close()
+    return f"spotify: {hit} of {total} Spotify plays ({100 * hit / total:.2f}%) have a stored track response" \
+        if total else None
+
+
 def status(cache_path=None) -> int:
     cache = Cache(cache_path)
     rows = cache.status_counts()
@@ -221,6 +251,9 @@ def status(cache_path=None) -> int:
     for api, endpoint, done, queued, failed in rows:
         print(f"{api:<12} {endpoint:<20} {done:>8} {queued:>8} {failed:>7}")
         queued_by_api[api] = queued_by_api.get(api, 0) + queued
+    cover_line = spotify_play_coverage(cache)
+    if cover_line:
+        print(cover_line)
     over = cache.over_limit()
     for api, n in over.items():
         cap, note = cache.limit(api) or (None, None)
@@ -255,8 +288,11 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("fetch", help="work the queue, resumable")
     f.add_argument("--api", default=",".join(ALL_APIS), help="comma-separated subset")
     f.add_argument("--max-minutes", type=float, default=None)
-    f.add_argument("--spotify-min-plays", type=int, default=SPOTIFY_MIN_PLAYS,
-                   help="only fetch Spotify tracks with this many plays (1 = all)")
+    f.add_argument("--spotify-min-plays", type=int, default=None,
+                   help="only fetch Spotify tracks with this many plays (1 = all); replaces --spotify-cover")
+    f.add_argument("--spotify-cover", type=float, default=SPOTIFY_COVER, metavar="SHARE",
+                   help=f"fetch Spotify tracks, most played first, until they hold this share (0-1) of "
+                        f"Spotify plays, then stop (default {SPOTIFY_COVER}); 0 = no cap")
     f.add_argument("--spotify-budget", type=int, default=SPOTIFY_DAILY_BUDGET,
                    help="Spotify requests per rolling 24 h (0 = no budget, rely on QUOTA_EXCEEDED)")
     f.add_argument("--spotify-artists", action="store_true",
@@ -270,8 +306,10 @@ def main(argv: list[str] | None = None) -> int:
     bad = [a for a in apis if a not in ALL_APIS]
     if bad:
         ap.error(f"unknown api: {','.join(bad)}")
-    return fetch(apis, args.max_minutes, spotify_min_plays=args.spotify_min_plays, wait=args.wait,
-                 spotify_budget=args.spotify_budget, spotify_artists=args.spotify_artists)
+    floor = args.spotify_min_plays
+    return fetch(apis, args.max_minutes, spotify_min_plays=floor or SPOTIFY_MIN_PLAYS, wait=args.wait,
+                 spotify_budget=args.spotify_budget, spotify_artists=args.spotify_artists,
+                 spotify_cover=None if floor else args.spotify_cover)
 
 
 if __name__ == "__main__":
