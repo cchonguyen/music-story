@@ -8,7 +8,8 @@ export default {
     {name: "Songs", path: "/songs"},
     {name: "Genres", path: "/genres"},
     {name: "Habits", path: "/habits"},
-    {name: "Places", path: "/places"}
+    {name: "Places", path: "/places"},
+    {name: "Explorer", path: "/explorer"}
   ],
   sidebar: true,
   search: false,
