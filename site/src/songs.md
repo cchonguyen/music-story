@@ -1,11 +1,11 @@
 # Songs
 
 ```js
-const trackYear = FileAttachment("data/track_year.json").json();
-const binge = FileAttachment("data/binge.json").json();
-const songAge = FileAttachment("data/song_age.json").json();
-const trackLabel = FileAttachment("data/track_label.json").json();
-const artistLabel = FileAttachment("data/artist_label.json").json();
+const trackYear = await FileAttachment("data/track_year.json").json();
+const binge = await FileAttachment("data/binge.json").json();
+const songAge = await FileAttachment("data/song_age.json").json();
+const trackLabel = await FileAttachment("data/track_label.json").json();
+const artistLabel = await FileAttachment("data/artist_label.json").json();
 const titles = new Map(trackLabel.map((d) => [d.track_id, d]));
 const artistNames = new Map(artistLabel.map((d) => [d.artist_id, d.name]));
 const trackName = (id) => titles.get(id)?.title ?? `track ${id}`;
