@@ -1,7 +1,7 @@
 # Places
 
 ```js
-const country = FileAttachment("data/country_year.json").json();
+const country = await FileAttachment("data/country_year.json").json();
 const known = country.filter((d) => d.country !== "unknown");
 const unknown = country.filter((d) => d.country === "unknown");
 ```

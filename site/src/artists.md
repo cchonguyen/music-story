@@ -1,10 +1,10 @@
 # Artists
 
 ```js
-const artistYear = FileAttachment("data/artist_year.json").json();
-const arc = FileAttachment("data/artist_arc.json").json();
-const remix = FileAttachment("data/remixer_year.json").json();
-const artistLabel = FileAttachment("data/artist_label.json").json();
+const artistYear = await FileAttachment("data/artist_year.json").json();
+const arc = await FileAttachment("data/artist_arc.json").json();
+const remix = await FileAttachment("data/remixer_year.json").json();
+const artistLabel = await FileAttachment("data/artist_label.json").json();
 const names = new Map(artistLabel.map((d) => [d.artist_id, d.name]));
 const nameOf = (id) => names.get(id) ?? `artist ${id}`;
 ```

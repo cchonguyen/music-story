@@ -1,8 +1,8 @@
 # music-story
 
 ```js
-const year = FileAttachment("data/year.json").json();
-const clock = FileAttachment("data/clock.json").json();
+const year = await FileAttachment("data/year.json").json();
+const clock = await FileAttachment("data/clock.json").json();
 ```
 
 ## Plays per year
