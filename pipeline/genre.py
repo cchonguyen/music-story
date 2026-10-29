@@ -29,8 +29,8 @@ SELECT DISTINCT t, NULL, NULL, false FROM (
 
 BUILD_SQL = """
 DELETE FROM track_genre;
-INSERT INTO track_genre
-WITH lvl AS (
+-- Materialised so the heavy joins finish before the window step (DuckDB 2.0 dictionary-cache bug).
+CREATE OR REPLACE TEMP TABLE lvl AS (
     -- (track_id, level, tag, count)
     SELECT t.track_id, 'track' AS level, l.tag, l.count::DOUBLE AS cnt
     FROM dim_track t JOIN enr_lastfm_tags l
@@ -66,8 +66,9 @@ WITH lvl AS (
     SELECT t.track_id, 'artist', lower(trim(g.tag)), 100.0
     FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id
     JOIN enr_mb_artist m ON m.artist_mbid = d.artist_mbid, unnest(m.genres) g(tag)
-),
-styled AS (
+);
+INSERT INTO track_genre
+WITH styled AS (
     SELECT l.track_id, l.level, m.parent_genre, m.style, sum(l.cnt) AS cnt
     FROM lvl l JOIN genre_map m ON m.tag = l.tag AND m.is_genre
     GROUP BY ALL
