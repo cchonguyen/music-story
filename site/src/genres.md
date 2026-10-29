@@ -1,7 +1,7 @@
 # Genres
 
 ```js
-const genreYear = FileAttachment("data/genre_year.json").json();
+const genreYear = await FileAttachment("data/genre_year.json").json();
 const parentShare = d3.rollups(genreYear, (v) => d3.sum(v, (d) => d.plays_weighted), (d) => d.year, (d) => d.parent_genre)
   .flatMap(([year, ps]) => { const tot = d3.sum(ps, (p) => p[1]); return ps.map(([parent_genre, w]) => ({year, parent_genre, share: w / tot})); });
 ```

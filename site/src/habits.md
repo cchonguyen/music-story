@@ -1,10 +1,10 @@
 # Habits
 
 ```js
-const clock = FileAttachment("data/clock.json").json();
-const sessions = FileAttachment("data/sessions_year.json").json();
-const skip = FileAttachment("data/skip_rate.json").json();
-const platform = FileAttachment("data/platform_year.json").json();
+const clock = await FileAttachment("data/clock.json").json();
+const sessions = await FileAttachment("data/sessions_year.json").json();
+const skip = await FileAttachment("data/skip_rate.json").json();
+const platform = await FileAttachment("data/platform_year.json").json();
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 ```
 
