@@ -171,6 +171,3 @@ FROM plays p
 JOIN dim_artist a USING (artist_id)
 GROUP BY 1, 2, 3;
 
--- 7. Explorer events table for instant zero-CDN fallback and in-browser Remix Studio slicing
-CREATE OR REPLACE TABLE mart_explorer_events AS
-SELECT * FROM explorer_plays;
