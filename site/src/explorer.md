@@ -4,7 +4,12 @@ Every play and skip across 19.5 years, queryable and remixable in the browser. U
 
 ```js
 import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
-const rawEvents = await FileAttachment("data/explorer_events.json").json();
+const rawEvents = (await Promise.all([
+  FileAttachment("data/explorer_events_2007_2011.json").json(),
+  FileAttachment("data/explorer_events_2012_2015.json").json(),
+  FileAttachment("data/explorer_events_2016_2020.json").json(),
+  FileAttachment("data/explorer_events_2021_on.json").json()
+])).flat();
 const tempoPulse = await FileAttachment("data/tempo_pulse.json").json();
 
 const allEvents = rawEvents.map((d) => {

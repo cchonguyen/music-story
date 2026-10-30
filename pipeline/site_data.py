@@ -21,6 +21,14 @@ SITE_FILTERS = {
     "track_year": "rank <= 50",
     "binge": "window_plays >= 15",
 }
+# Explorer events split by year so each JSON file stays under the 25 MB per-file limit for Cloudflare
+# static assets. The last chunk is open-ended so later years land in it.
+EXPLORER_CHUNKS = {
+    "explorer_events_2007_2011": "year(ts) BETWEEN 2007 AND 2011",
+    "explorer_events_2012_2015": "year(ts) BETWEEN 2012 AND 2015",
+    "explorer_events_2016_2020": "year(ts) BETWEEN 2016 AND 2020",
+    "explorer_events_2021_on": "year(ts) >= 2021",
+}
 
 INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_track", "bridge_track_artist",
                 "track_genre", "genre_map", "fixture_scenarios"]
@@ -79,8 +87,10 @@ def mart_rows(name: str, db: Path | None = None) -> list[dict]:
         raise ValueError(f"bad mart name: {name!r}")
     con = _site_con(db)
     try:
-        where = f"WHERE {SITE_FILTERS[name]}" if name in SITE_FILTERS else ""
-        cur = con.execute(f"SELECT * FROM mart_{name} {where} ORDER BY ALL")
+        table, where = name, f"WHERE {SITE_FILTERS[name]}" if name in SITE_FILTERS else ""
+        if name in EXPLORER_CHUNKS:
+            table, where = "explorer_events", f"WHERE {EXPLORER_CHUNKS[name]}"
+        cur = con.execute(f"SELECT * FROM mart_{table} {where} ORDER BY ALL")
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
     finally:
