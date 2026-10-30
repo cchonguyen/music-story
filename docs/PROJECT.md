@@ -211,6 +211,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-27 | Explorer loads DuckDB-Wasm from jsDelivr, not Framework's self-hosted DuckDBClient | Self-hosting puts `duckdb-eh.wasm` (34 MiB) and `duckdb-mvp.wasm` (39 MiB) in `dist/`, over the 25 MiB per-file limit of Workers static assets. Rejected: Arrow IPC with a plain-JS explorer (7 MB uncompressed vs 0.6 MB Parquet on the fixture, and no SQL) |
 | 2026-10-27 | Artist genres for Concert Tracker as an exported JSON file (`pipeline/artist_genre.py`), not a table or an API | The database stays on Charlie's Mac; Concert Tracker runs on Cloudflare and cannot reach it. Shipping the genre map with it keeps one curated map for both apps. Rejected: a published endpoint behind Access (couples the two deploys) |
 | 2026-10-27 | Explorer rows include skips, flagged `is_skip` | Skip rate per artist or track needs them; counts and hours leave them out so they match the marts |
+| 2026-10-30 | Non-destructive data preservation invariant | Raw listening telemetry is never destructively overwritten or pruned; all recalculations, merges, and enrichments must be additive or non-destructive views/marts |
 
 ## 8. Open items
 

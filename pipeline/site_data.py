@@ -27,14 +27,34 @@ INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_tr
 
 
 def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb.DuckDBPyConnection:
-    """In-memory copy of the fixture's input tables with marts built (one file, or all in name order)."""
+    """Copy of the fixture's input tables with marts built (one file, or all in name order).
+    When building all marts for the default fixture DB, caches the materialized DuckDB file
+    so 16+ Observable Framework loaders do not rebuild every mart 16 times."""
+    marts = config.SQL_DIR / "marts"
+    files = [marts / mart_file] if mart_file else sorted(marts.glob("*.sql"))
+    if mart_file is None and fixture_db_path == config.FIXTURE_DB and fixture_db_path.exists():
+        cache_db = config.REPO_ROOT / "build" / "fixture_marts_cache.duckdb"
+        src_mtime = max([fixture_db_path.stat().st_mtime, *[f.stat().st_mtime for f in files]])
+        if cache_db.exists() and cache_db.stat().st_mtime >= src_mtime:
+            return duckdb.connect(str(cache_db), read_only=True)
+        cache_db.parent.mkdir(parents=True, exist_ok=True)
+        if cache_db.exists():
+            cache_db.unlink()
+        con = duckdb.connect(str(cache_db))
+        con.execute(f"ATTACH '{fixture_db_path}' AS fx (READ_ONLY)")
+        for t in INPUT_TABLES:
+            con.execute(f"CREATE TABLE {t} AS SELECT * FROM fx.{t}")
+        con.execute("DETACH fx")
+        for f in files:
+            con.execute(f.read_text())
+        con.close()
+        return duckdb.connect(str(cache_db), read_only=True)
+
     con = duckdb.connect()
     con.execute(f"ATTACH '{fixture_db_path}' AS fx (READ_ONLY)")
     for t in INPUT_TABLES:
         con.execute(f"CREATE TABLE {t} AS SELECT * FROM fx.{t}")
     con.execute("DETACH fx")
-    marts = config.SQL_DIR / "marts"
-    files = [marts / mart_file] if mart_file else sorted(marts.glob("*.sql"))
     for f in files:
         con.execute(f.read_text())
     return con
