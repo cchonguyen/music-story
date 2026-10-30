@@ -11,7 +11,7 @@ Cloudflare Access).
 - Lint: `uv run ruff check`
 - Typecheck / UI build: `cd site && npm run build`
 
-Harness v2.2 (`.harness-version`) is synced from `cchonguyen/claude-harness-hub` (remote `harness-hub`,
+Harness v2.1 (`.harness-version`) is synced from `cchonguyen/claude-harness-hub` (remote `harness-hub`,
 `/sync-harness`). `.spec/` tracks harness slices; `STATE.md` and `docs/PROJECT.md` stay the source
 of truth for waves, packets, data facts and decisions. Project rules below win over harness rules.
 
