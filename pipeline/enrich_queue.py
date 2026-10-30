@@ -22,10 +22,34 @@ TRACK_KEY = "artist_norm || '::' || full_norm"
 LFM_ONLY = "track_uri IS NULL"
 NO_MBID = "(track_mbid IS NULL OR track_mbid = '')"
 
+_RESOLVED_KEYS_SQL = f"""
+    SELECT DISTINCT {TRACK_KEY} AS k
+    FROM events e
+    JOIN enr_spotify_track s ON s.track_uri = e.track_uri
+    WHERE s.http_status = 200 AND s.isrc IS NOT NULL
+    UNION
+    SELECT DISTINCT {TRACK_KEY} AS k
+    FROM events e
+    JOIN enr_mb_recording m ON m.lookup_kind = 'mbid' AND m.lookup_key = e.track_mbid
+    WHERE m.http_status = 200 AND len(m.isrcs) > 0
+"""
+
 _SQL = {
-    ("spotify", "tracks"): """
-        SELECT split_part(track_uri, ':', 3) AS k FROM events
-        WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1 ORDER BY count(*) DESC, 1""",
+    ("spotify", "tracks"): f"""
+        WITH u AS (
+            SELECT split_part(track_uri, ':', 3) AS k,
+                   {TRACK_KEY} AS song_key,
+                   count(*) AS n
+            FROM events
+            WHERE track_uri LIKE 'spotify:track:%'
+            GROUP BY 1, 2
+        ),
+        ranked AS (
+            SELECT k, n,
+                   row_number() OVER (PARTITION BY song_key ORDER BY n DESC, k) AS uri_tier
+            FROM u
+        )
+        SELECT k FROM ranked ORDER BY (uri_tier > 1), n DESC, k""",
     ("musicbrainz", "recording"): f"""
         SELECT track_mbid FROM events WHERE {LFM_ONLY} AND NOT {NO_MBID}
         GROUP BY 1 ORDER BY count(*) DESC, 1""",
@@ -48,21 +72,35 @@ _SQL = {
 
 # Spotify-played keys whose most played URI sits under the Spotify play floor: they never reach
 # GET /tracks, so MusicBrainz search and Deezer search look them up by artist and title instead.
+# Keys that already resolved an ISRC via another URI or Last.fm MBID are pruned via ANTI JOIN.
 _TAIL_SQL = f"""
-    WITH u AS (SELECT track_uri, count(*) AS n FROM events WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1)
-    SELECT {TRACK_KEY} AS k FROM events JOIN u USING (track_uri)
-    GROUP BY 1 HAVING max(u.n) < ? ORDER BY count(*) DESC, 1"""
+    WITH u AS (SELECT track_uri, count(*) AS n FROM events WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1),
+    resolved AS ({_RESOLVED_KEYS_SQL}),
+    candidates AS (
+        SELECT {TRACK_KEY} AS k, count(*) AS tot_n
+        FROM events JOIN u USING (track_uri)
+        GROUP BY 1 HAVING max(u.n) < ?
+    )
+    SELECT c.k FROM candidates c ANTI JOIN resolved r ON r.k = c.k
+    ORDER BY c.tot_n DESC, c.k"""
 TAIL_ENDPOINTS = [("musicbrainz", "search"), ("deezer", "search")]
 
 
 def spotify_tail(con: duckdb.DuckDBPyConnection, cap: int) -> list[str]:
-    """artist/title keys whose most played Spotify track ranks past `cap` (the Spotify priority)."""
+    """artist/title keys whose most played Spotify track ranks past `cap` (the Spotify priority),
+    excluding keys whose ISRC is already known from Spotify or MusicBrainz."""
     return [r[0] for r in con.execute(f"""
         WITH u AS (SELECT track_uri, split_part(track_uri, ':', 3) AS k, count(*) AS n FROM events
                    WHERE track_uri LIKE 'spotify:track:%' GROUP BY 1, 2),
-        r AS (SELECT track_uri, row_number() OVER (ORDER BY n DESC, k) AS rk FROM u)
-        SELECT {TRACK_KEY} AS key FROM events JOIN r USING (track_uri)
-        GROUP BY 1 HAVING min(rk) > ? ORDER BY count(*) DESC, 1""", [cap]).fetchall() if r[0]]
+        r AS (SELECT track_uri, row_number() OVER (ORDER BY n DESC, k) AS rk FROM u),
+        resolved AS ({_RESOLVED_KEYS_SQL}),
+        candidates AS (
+            SELECT {TRACK_KEY} AS k, count(*) AS tot_n
+            FROM events JOIN r USING (track_uri)
+            GROUP BY 1 HAVING min(rk) > ?
+        )
+        SELECT c.k FROM candidates c ANTI JOIN resolved res ON res.k = c.k
+        ORDER BY c.tot_n DESC, c.k""", [cap]).fetchall() if r[0]]
 
 
 def seed_queue(con: duckdb.DuckDBPyConnection, cache: Cache, apis: set[str],

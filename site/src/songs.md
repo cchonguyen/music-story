@@ -1,11 +1,16 @@
 # Songs
 
+Annual top recordings, 14-day obsession binges, the **Earworm Half-Life** (distinguishing short-lived burnouts from canonized anthems), and the **Musical Biological Clock** (song age at the moment of play).
+
 ```js
+import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
 const trackYear = await FileAttachment("data/track_year.json").json();
 const binge = await FileAttachment("data/binge.json").json();
+const earworm = await FileAttachment("data/earworm_halflife.json").json();
 const songAge = await FileAttachment("data/song_age.json").json();
 const trackLabel = await FileAttachment("data/track_label.json").json();
 const artistLabel = await FileAttachment("data/artist_label.json").json();
+
 const titles = new Map(trackLabel.map((d) => [d.track_id, d]));
 const artistNames = new Map(artistLabel.map((d) => [d.artist_id, d.name]));
 const trackName = (id) => titles.get(id)?.title ?? `track ${id}`;
@@ -20,37 +25,142 @@ const pickedYear = view(Inputs.select(years, {label: "Year"}));
 ```
 
 ```js
-Inputs.table(
-  trackYear.filter((d) => d.year === pickedYear && d.rank <= 10).sort((a, b) => a.rank - b.rank)
-    .map((d) => ({rank: d.rank, track: trackName(d.track_id), artist: artistOf(d.track_id), plays: d.plays}))
-)
+const topTracksYear = trackYear
+  .filter((d) => d.year === pickedYear && d.rank <= 10)
+  .sort((a, b) => a.rank - b.rank)
+  .map((d) => ({
+    rank: d.rank,
+    track: trackName(d.track_id),
+    artist: artistOf(d.track_id),
+    label: `${trackName(d.track_id)} — ${artistOf(d.track_id)}`,
+    plays: d.plays,
+    hours: Math.round(d.listen_hours * 10) / 10
+  }));
+```
+
+```js
+Plot.plot({
+  marginLeft: 220,
+  height: 290,
+  x: {label: `Plays in ${pickedYear}`, grid: true},
+  y: {label: null, domain: topTracksYear.map((d) => d.label)},
+  marks: [
+    Plot.barX(topTracksYear, {y: "label", x: "plays", fill: "#2563eb", tip: true}),
+    Plot.ruleX([0])
+  ]
+})
+```
+
+```js
+Inputs.table(topTracksYear.map(({rank, track, artist, plays, hours}) => ({rank, track, artist, plays, hours})))
 ```
 
 <!-- story: top tracks -->
 
-## Binges
+## Binges & The Earworm Half-Life: Burnout vs. Canonization
 
-Tracks whose busiest 14 days ran far above their usual rate (at least 15 plays in that window).
+Tracks whose busiest 14-day window ran far above their baseline rate ($\ge 15$ plays in 14 days). By measuring **what happened after day 14** (`later_plays / lifetime_plays`), each binge separates into:
+- **Canonized Anthems**: A 14-day obsession that became a permanent, multi-year favorite ($\ge 1.25\times$ more plays *after* the binge than during it).
+- **Steady Rotation**: Moderate post-binge replay.
+- **Flash Burnouts**: Overplayed in a single 14-day fever with minimal replay afterward ($\le 0.35\times$ post-window plays).
+
+```js
+const archetypeFilter = view(Inputs.radio(
+  ["All Archetypes", "Canonized Anthem", "Steady Rotation", "Flash Burnout"],
+  {label: "Earworm archetype", value: "All Archetypes"}
+));
+```
+
+```js
+const earwormRows = earworm
+  .filter((d) => archetypeFilter === "All Archetypes" || d.archetype === archetypeFilter)
+  .map((d) => ({
+    ...d,
+    track: trackName(d.track_id),
+    artist: artistOf(d.track_id),
+    survival_pct: d.post_survival_share * 100
+  }))
+  .sort((a, b) => b.rate_ratio - a.rate_ratio);
+```
+
+```js
+Plot.plot({
+  height: 320,
+  x: {label: "14-Day Burst Intensity (Rate Ratio vs. Lifetime Baseline)", grid: true},
+  y: {label: "Post-Binge Survival Share (% of Lifetime Plays After Day 14)", grid: true},
+  r: {range: [5, 16], label: "14-Day Window Plays"},
+  color: {
+    legend: true,
+    domain: ["Canonized Anthem", "Steady Rotation", "Flash Burnout"],
+    range: ["#16a34a", "#0284c7", "#dc2626"]
+  },
+  marks: [
+    Plot.ruleY([50], {strokeDasharray: "4,4", strokeOpacity: 0.4}),
+    Plot.dot(earwormRows, {
+      x: "rate_ratio",
+      y: "survival_pct",
+      r: "window_plays",
+      fill: "archetype",
+      fillOpacity: 0.8,
+      stroke: "currentColor",
+      strokeWidth: 0.6,
+      title: (d) => `${d.track} — ${d.artist}\nArchetype: ${d.archetype}\n14d Window (${d.window_start}): ${d.window_plays} plays\nAfter Binge: ${d.later_plays} plays (${d.survival_pct.toFixed(1)}% of ${d.lifetime_plays} lifetime)`,
+      tip: true
+    })
+  ]
+})
+```
 
 ```js
 Inputs.table(
-  binge.filter((d) => d.window_plays >= 15).sort((a, b) => b.rate_ratio - a.rate_ratio).slice(0, 20)
-    .map((d) => ({track: trackName(d.track_id), artist: artistOf(d.track_id), window_start: d.window_start,
-      window_plays: d.window_plays, lifetime_plays: d.lifetime_plays, rate_ratio: Math.round(d.rate_ratio * 10) / 10}))
+  earwormRows.slice(0, 25).map((d) => ({
+    track: d.track,
+    artist: d.artist,
+    archetype: d.archetype,
+    window_start: d.window_start,
+    window_plays: d.window_plays,
+    post_30d: d.post_30d_plays,
+    later_plays: d.later_plays,
+    lifetime_plays: d.lifetime_plays,
+    rate_ratio: Math.round(d.rate_ratio * 10) / 10
+  }))
 )
 ```
 
 <!-- story: binges -->
 
-## Song age
+## Song age & The Musical Biological Clock
 
-Plays per year by song age (play year minus the song's first release year).
+Plays per year by song age (`play_year - work_year` of the underlying composition, so a 2021 remaster of a 2008 track counts as a 2008 song). Toggle between **Absolute Plays** and **100% Share of Annual Listening**.
 
 ```js
-Plot.plot({
-  x: {label: "Year", tickFormat: "d"},
-  y: {label: "Plays", grid: true},
-  color: {legend: true, label: "Age in years", domain: ["0", "1-2", "3-5", "6-10", "11-20", "21+", "unknown"]},
-  marks: [Plot.barY(songAge, {x: "year", y: "plays", fill: "age_bucket"}), Plot.ruleY([0])]
-})
+const ageMode = view(Inputs.radio(["Absolute Plays", "100% Share of Year"], {
+  label: "Display scale",
+  value: "Absolute Plays"
+}));
+const includeUnknownAge = view(Inputs.toggle({label: "Include tracks with unknown work_year", value: true}));
+```
+
+```js
+const ageDomain = ["0", "1-2", "3-5", "6-10", "11-20", "21+", ...(includeUnknownAge ? ["unknown"] : [])];
+const filteredAge = songAge.filter((d) => includeUnknownAge || d.age_bucket !== "unknown");
+```
+
+```js
+ageMode === "Absolute Plays"
+  ? Plot.plot({
+      x: {label: "Year", tickFormat: "d"},
+      y: {label: "Plays", grid: true},
+      color: {legend: true, label: "Age in years", domain: ageDomain},
+      marks: [Plot.barY(filteredAge, {x: "year", y: "plays", fill: "age_bucket", tip: true}), Plot.ruleY([0])]
+    })
+  : Plot.plot({
+      x: {label: "Year", tickFormat: "d"},
+      y: {label: "Share of plays", grid: true, tickFormat: "%"},
+      color: {legend: true, label: "Age in years", domain: ageDomain},
+      marks: [
+        Plot.barY(filteredAge, Plot.normalizeY("sum", {x: "year", y: "plays", fill: "age_bucket", tip: true})),
+        Plot.ruleY([0])
+      ]
+    })
 ```
