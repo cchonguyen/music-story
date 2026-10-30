@@ -77,7 +77,10 @@ def _site_con(db: Path | None) -> duckdb.DuckDBPyConnection:
         has_pulse = con.execute(
             "SELECT count(*) FROM information_schema.tables WHERE table_name = 'mart_tempo_pulse'"
         ).fetchone()[0] > 0
-        if has_day and has_pulse:
+        has_plays = con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'plays'"
+        ).fetchone()[0] > 0
+        if (has_day and has_pulse) or not has_plays:
             return con
         con.close()
         con_rw = duckdb.connect(str(db))
