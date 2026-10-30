@@ -38,11 +38,11 @@ def test_site_filters_trim_large_marts(fixture_db_path):
     assert min(r["window_plays"] for r in mart_rows("binge")) >= 15
 
 
-EXPLORER_COLS = ["ts", "artist", "title", "album", "artist_norm", "title_norm", "parent_genre", "style", "minutes",
+EXPLORER_COLS = ["day", "hour", "weekday", "artist", "title", "album", "artist_norm", "title_norm", "parent_genre", "style", "minutes",
                  "is_skip", "platform", "country", "source"]
 
 
-def test_explorer_parquet_has_every_play_and_skip(fixture_db_path, fx, tmp_path):
+def test_explorer_parquet_has_every_non_incognito_play_and_skip(fixture_db_path, fx, tmp_path):
     out = tmp_path / "plays.parquet"
     out.write_bytes(parquet_bytes("explorer_plays"))
     con = duckdb.connect()
@@ -50,12 +50,23 @@ def test_explorer_parquet_has_every_play_and_skip(fixture_db_path, fx, tmp_path)
     n, skips, named, minutes = con.execute(
         f"SELECT count(*) FILTER (NOT is_skip), count(*) FILTER (is_skip), count(artist) + count(title), "
         f"sum(minutes) FILTER (NOT is_skip) FROM '{out}'").fetchone()
-    plays, ms = fx.execute("SELECT count(*), sum(ms_imputed) FROM plays").fetchone()
-    assert (n, skips) == (plays, fx.execute("SELECT count(*) FROM skips").fetchone()[0])
-    assert named == 2 * (plays + skips)
+    plays, ms = fx.execute("SELECT count(*), sum(ms_imputed) FROM plays WHERE NOT coalesce(incognito, false)").fetchone()
+    skip_n = fx.execute("SELECT count(*) FROM skips WHERE NOT coalesce(incognito, false)").fetchone()[0]
+    assert (n, skips) == (plays, skip_n)
+    assert fx.execute("SELECT count(*) FILTER (incognito) FROM plays").fetchone()[0] > 0
+    assert named == 2 * (plays + skip_n)
     assert abs(minutes - ms / 60000) / (ms / 60000) < 1e-4
     codec = con.execute(f"SELECT DISTINCT compression FROM parquet_metadata('{out}')").fetchall()
     assert codec == [("ZSTD",)]
+
+
+def test_explorer_time_is_coarsened(fixture_db_path, tmp_path):
+    out = tmp_path / "plays.parquet"
+    out.write_bytes(parquet_bytes("explorer_plays"))
+    bad = duckdb.connect().execute(f"SELECT count(*) FROM '{out}' WHERE hour NOT BETWEEN 0 AND 23 "
+                                   f"OR weekday NOT BETWEEN 1 AND 7").fetchone()[0]
+    types = {r[0]: r[1] for r in duckdb.connect().execute(f"DESCRIBE SELECT * FROM '{out}'").fetchall()}
+    assert bad == 0 and types["day"] == "DATE" and types["hour"] == "TINYINT" and types["weekday"] == "TINYINT"
 
 
 def test_explorer_parquet_is_sorted_by_artist(fixture_db_path, tmp_path):

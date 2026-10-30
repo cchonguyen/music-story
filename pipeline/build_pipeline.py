@@ -38,7 +38,6 @@ STEPS = [
     ("05", "W8", "sql", "05_sessions.sql"),
     ("06", "W9", "py", "pipeline.genre"),
     ("07", "W5/W6", "sql", "marts"),  # every sql/marts/*.sql, in name order
-    ("08", "W12", "sql", "08_export.sql"),
 ]
 
 SUMMARY_TABLES = ["raw_spotify", "raw_lastfm", "stg_spotify", "stg_lastfm", "lfm_self_dupes", "match_links",
