@@ -22,7 +22,7 @@ SITE_FILTERS = {
     "binge": "window_plays >= 15",
 }
 INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_track", "bridge_track_artist",
-                "track_genre", "genre_map", "fixture_scenarios", "enr_deezer_track"]
+                "track_genre", "genre_map", "enr_deezer_track", "fixture_scenarios"]
 
 
 def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb.DuckDBPyConnection:
@@ -69,6 +69,21 @@ PARQUET_EXPORTS = {
 def _site_con(db: Path | None) -> duckdb.DuckDBPyConnection:
     db = db or (Path(os.environ["SITE_DB"]) if os.environ.get("SITE_DB") else None)
     if db is not None:
+        con = duckdb.connect(str(db), read_only=True)
+        has_day = con.execute(
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_name = 'explorer_plays' AND column_name = 'day'"
+        ).fetchone()[0] > 0
+        has_pulse = con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'mart_tempo_pulse'"
+        ).fetchone()[0] > 0
+        if has_day and has_pulse:
+            return con
+        con.close()
+        con_rw = duckdb.connect(str(db))
+        for f in sorted((config.SQL_DIR / "marts").glob("*.sql")):
+            con_rw.execute(f.read_text())
+        con_rw.close()
         return duckdb.connect(str(db), read_only=True)
     return fixture_marts(config.FIXTURE_DB)
 
