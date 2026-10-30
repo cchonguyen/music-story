@@ -13,8 +13,11 @@ if [[ "${1:-}" == "--setup" ]]; then
   cp -f "${REPO_ROOT}/scripts/uv_shim.sh" /usr/local/bin/uv
   chmod +x /usr/local/bin/uv
   python3 "${REPO_ROOT}/scripts/generate_fixture_marts.py" --build-only
-  if [[ ! -d "${REPO_ROOT}/site/node_modules/@observablehq/framework" ]]; then
+  if [[ ! -x "${REPO_ROOT}/site/node_modules/.bin/observable" ]]; then
     npm --prefix "${REPO_ROOT}/site" install --no-audit --no-fund
+  fi
+  if [[ -f "${REPO_ROOT}/site/node_modules/.bin/observable" ]]; then
+    ln -sf "${REPO_ROOT}/site/node_modules/.bin/observable" /usr/local/bin/observable || true
   fi
   PREVIEW_JS="${REPO_ROOT}/site/node_modules/@observablehq/framework/dist/client/preview.js"
   if [[ -f "${PREVIEW_JS}" ]]; then

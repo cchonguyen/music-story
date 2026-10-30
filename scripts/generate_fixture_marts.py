@@ -67,7 +67,7 @@ def quantile_cont(vals: list[float], q: float) -> float:
 def build_all_marts() -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     marker = CACHE_DIR / "_ready.json"
-    if marker.exists() and (CACHE_DIR / "year.json").exists() and (CACHE_DIR / "explorer_events.json").exists():
+    if marker.exists() and (CACHE_DIR / "year.json").exists() and (CACHE_DIR / "explorer_events_2021_on.json").exists():
         return
 
     g = Gen()
@@ -833,6 +833,10 @@ def build_all_marts() -> None:
         "tempo_pulse": mart_tempo_pulse,
         "artist_passport": mart_artist_passport,
         "explorer_events": explorer_events,
+        "explorer_events_2007_2011": [r for r in explorer_events if 2007 <= int(r["ts"][:4]) <= 2011],
+        "explorer_events_2012_2015": [r for r in explorer_events if 2012 <= int(r["ts"][:4]) <= 2015],
+        "explorer_events_2016_2020": [r for r in explorer_events if 2016 <= int(r["ts"][:4]) <= 2020],
+        "explorer_events_2021_on": [r for r in explorer_events if int(r["ts"][:4]) >= 2021],
     }
 
     for name, rows in outputs.items():
