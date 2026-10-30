@@ -17,7 +17,7 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W9 genre `pipeline/genre.py` + csv | Sonnet | done (main); lead fix (MB genre join), 222-row map |
 | W10 chapters + charts | Sonnet | done (main), first try; site_data trims top-N marts |
 | Concert Tracker export `pipeline/artist_genre.py` | Opus lead | PR open 2026-10-27; `export` -> build/artist_genres.json |
-| W10b explorer page | Opus lead | PR open 2026-10-27; DuckDB-Wasm from jsDelivr (self-hosted wasm > 25 MiB Workers limit) |
+| W10b explorer page | Opus lead | PR open 2026-10-27; DuckDB-Wasm from jsDelivr (self-hosted wasm > 25 MiB Workers limit). W12 gate applied 2026-10-29: no incognito, time as day/hour/weekday |
 
 Next:
 1. Fetch 2026-10-23: Last.fm done. Spotify locked out after ~600 req (until Fri 23 Oct 14:44 PT).

@@ -1,4 +1,5 @@
 -- One row per play or skip with names instead of ids, for the site's DuckDB-Wasm explorer.
+-- Privacy gate (plan, W12): incognito plays are left out, and time is only the local day, hour and ISO weekday.
 -- A view, not a mart table: pipeline.site_data writes it to one Zstd Parquet file, sorted for compression.
 -- is_skip marks rows from `skips`; the explorer leaves them out unless asked, so its play counts match the
 -- marts. Genre is the track's heaviest (parent_genre, style); tracks with no genre row get NULL.
@@ -11,12 +12,16 @@ WITH top_genre AS (
     SELECT started_at_local, track_id, artist_id, album_id, ms_imputed, platform_family, country, source,
            false AS is_skip
     FROM plays
+    WHERE NOT coalesce(incognito, false)
     UNION ALL
     SELECT started_at_local, track_id, artist_id, album_id, ms_imputed, platform_family, country, source,
            true AS is_skip
     FROM skips
+    WHERE NOT coalesce(incognito, false)
 )
-SELECT e.started_at_local AS ts,
+SELECT CAST(e.started_at_local AS DATE) AS day,
+       CAST(hour(e.started_at_local) AS TINYINT) AS hour,
+       CAST(isodow(e.started_at_local) AS TINYINT) AS weekday,
        a.name AS artist,
        t.title,
        al.name AS album,

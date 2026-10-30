@@ -11,13 +11,13 @@ import statistics
 import sys
 import types
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 if not hasattr(dt, "UTC"):
-    dt.UTC = timezone.utc
-UTC = timezone.utc
+    dt.UTC = dt.UTC
+UTC = dt.UTC
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -37,10 +37,9 @@ except ImportError:
     stub_dotenv.load_dotenv = lambda *a, **kw: None
     sys.modules["dotenv"] = stub_dotenv
 
-from scripts.make_fixtures import (  # noqa: E402
+from scripts.make_fixtures import (
     GENRE_BPM,
     LASTFM_ONLY_ID_OFFSET,
-    PLATFORMS,
     TZ,
     ZZ_BLOCK,
     Gen,
@@ -88,9 +87,7 @@ def build_all_marts() -> None:
         ts = ts.replace(microsecond=0)
         d = li.true_start.date()
         conn = li.country
-        if ZZ_BLOCK[0] <= d <= ZZ_BLOCK[1]:
-            conn = "ZZ"
-        elif r.random() < 0.005:
+        if ZZ_BLOCK[0] <= d <= ZZ_BLOCK[1] or r.random() < 0.005:
             conn = "ZZ"
         a = g.artists[li.rec.artist]
         alb = g.albums[dict(li.rec.uris)[li.uri]]
@@ -150,7 +147,7 @@ def build_all_marts() -> None:
         by_pair[(row["artist"], row["track"])].append((row["uts"], i))
 
     deduped: set[int] = set()
-    for _, items in by_pair.items():
+    for items in by_pair.values():
         for j in range(1, len(items)):
             if items[j][0] - items[j - 1][0] <= 60:
                 deduped.add(items[j][1])
@@ -788,7 +785,7 @@ def build_all_marts() -> None:
     for x in plays_list + skips_list:
         rec = x["rec"]
         a = A[x["artist_id"]]
-        alb = AL[x["album_id"]] if x["album_id"] in AL else None
+        alb = AL.get(x["album_id"], None)
         st = a.genre
         pg = parent_map[st]
         explorer_events.append(

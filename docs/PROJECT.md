@@ -210,6 +210,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-23 | Tail ISRCs from Deezer and MB search; `dim_album` fallback from play album names | ISRCs and albums no longer depend on the Spotify quota |
 | 2026-10-27 | Explorer loads DuckDB-Wasm from jsDelivr, not Framework's self-hosted DuckDBClient | Self-hosting puts `duckdb-eh.wasm` (34 MiB) and `duckdb-mvp.wasm` (39 MiB) in `dist/`, over the 25 MiB per-file limit of Workers static assets. Rejected: Arrow IPC with a plain-JS explorer (7 MB uncompressed vs 0.6 MB Parquet on the fixture, and no SQL) |
 | 2026-10-27 | Artist genres for Concert Tracker as an exported JSON file (`pipeline/artist_genre.py`), not a table or an API | The database stays on Charlie's Mac; Concert Tracker runs on Cloudflare and cannot reach it. Shipping the genre map with it keeps one curated map for both apps. Rejected: a published endpoint behind Access (couples the two deploys) |
+| 2026-10-29 | Explorer privacy gate: incognito plays and skips are left out, and time is only `day`, `hour` and ISO `weekday` (no timestamps) | The plan's W12 gate, applied to the one row-level export so there is a single data path; the explorer's year, month and first or last play use only `day` |
 | 2026-10-27 | Explorer rows include skips, flagged `is_skip` | Skip rate per artist or track needs them; counts and hours leave them out so they match the marts |
 | 2026-10-30 | Non-destructive data preservation invariant | Raw listening telemetry is never destructively overwritten or pruned; all recalculations, merges, and enrichments must be additive or non-destructive views/marts |
 
@@ -230,4 +231,6 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 - The explorer has only been checked on the fixture, in a headless browser with the CDN files served
   locally (this cloud container blocks jsDelivr and extensions.duckdb.org). Check it once on the
   deployed site.
-- Remaining packets: W11 stats (real data), W12 export, W13 story.
+- Marts still count incognito plays in their aggregates (only the explorer drops them). Decide with Charlie
+  whether marts should drop them too.
+- Remaining packets: W11 stats (real data), W13 story. W12 export is folded into the explorer (2026-10-29).
