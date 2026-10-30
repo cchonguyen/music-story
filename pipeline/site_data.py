@@ -22,7 +22,7 @@ SITE_FILTERS = {
     "binge": "window_plays >= 15",
 }
 INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_track", "bridge_track_artist",
-                "track_genre", "genre_map", "fixture_scenarios"]
+                "track_genre", "genre_map", "fixture_scenarios", "enr_deezer_track"]
 
 
 def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb.DuckDBPyConnection:
