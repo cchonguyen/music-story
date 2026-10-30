@@ -99,7 +99,7 @@ SELECT
     master_metadata_album_album_name                                          AS album_raw,
     platform                                                                  AS platform_raw,
     CASE
-        WHEN platform = 'ios' THEN 'ios'
+        WHEN lower(platform) LIKE '%ios%' OR lower(platform) LIKE '%iphone%' OR lower(platform) LIKE '%ipad%' THEN 'ios'
         WHEN platform LIKE 'Android%' THEN 'android'
         WHEN platform LIKE 'Windows%' THEN 'windows'
         WHEN platform LIKE 'OS X%' OR platform LIKE 'osx%' THEN 'mac'
