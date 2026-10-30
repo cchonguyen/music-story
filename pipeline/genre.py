@@ -51,9 +51,9 @@ WITH lvl AS (
     ) x, unnest(x.genres) g(tag)
     UNION ALL
     SELECT t.track_id, 'album', l.tag, l.count::DOUBLE
-    FROM dim_track t JOIN dim_album a USING (album_id) JOIN enr_lastfm_tags l
-      ON l.entity_type = 'album' AND l.entity_key = (SELECT artist_norm FROM dim_artist WHERE artist_id = a.primary_artist_id)
-                                                     || '::' || a.album_norm
+    FROM dim_track t JOIN dim_album a USING (album_id) JOIN dim_artist pa ON pa.artist_id = a.primary_artist_id
+    JOIN enr_lastfm_tags l
+      ON l.entity_type = 'album' AND l.entity_key = pa.artist_norm || '::' || a.album_norm
     UNION ALL
     SELECT t.track_id, 'artist', l.tag, l.count::DOUBLE
     FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id JOIN enr_lastfm_tags l
