@@ -95,7 +95,23 @@ const styleScale = view(Inputs.radio(["Weighted Plays", "100% Share within Paren
 ```
 
 ```js
-const styles = genreYear.filter((d) => d.parent_genre === parent);
+const rawStyles = genreYear.filter((d) => d.parent_genre === parent);
+const styleYears = [...new Set(rawStyles.map((d) => d.year))].sort((a, b) => a - b);
+const styleNames = [...new Set(rawStyles.map((d) => d.style))].sort();
+const styleByYearMap = new Map(rawStyles.map((d) => [`${d.year}::${d.style}`, d.plays_weighted]));
+const styles = styleYears.flatMap((year) => {
+  const yearTotal = d3.sum(styleNames, (s) => styleByYearMap.get(`${year}::${s}`) ?? 0);
+  return styleNames.map((style) => {
+    const plays_weighted = styleByYearMap.get(`${year}::${style}`) ?? 0;
+    return {
+      year,
+      parent_genre: parent,
+      style,
+      plays_weighted,
+      share_parent: yearTotal > 0 ? plays_weighted / yearTotal : 0
+    };
+  });
+});
 ```
 
 ```js
@@ -108,10 +124,10 @@ styleScale === "Weighted Plays"
     })
   : Plot.plot({
       x: {label: "Year", tickFormat: "d"},
-      y: {label: `Share of ${parent} plays`, grid: true, tickFormat: "%"},
+      y: {label: `Share of ${parent} plays`, domain: [0, 1], grid: true, tickFormat: "%"},
       color: {legend: true},
       marks: [
-        Plot.areaY(styles, Plot.normalizeY("sum", {x: "year", y: "plays_weighted", fill: "style", tip: true})),
+        Plot.areaY(styles, {x: "year", y: "share_parent", fill: "style", offset: "normalize", tip: true}),
         Plot.ruleY([0])
       ]
     })
