@@ -46,3 +46,25 @@ def test_top_style_matches_fixture(con):
 def test_noise_tags_never_count(con):
     assert scalar(con, "SELECT count(*) FROM track_genre WHERE style IN ('seen live', 'favorites') "
                        "OR regexp_matches(style, '^[0-9]{4}s?$')") == 0
+
+
+def test_umbrella_style_disaggregates_to_substyles(fixture_db_path):
+    c = fresh_db()
+    load_fx(c, fixture_db_path, INPUTS)
+    tid, a_norm, full_norm = c.execute(
+        "SELECT t.track_id, t.artist_norm, t.full_norm FROM dim_track t LIMIT 1"
+    ).fetchone()
+    c.execute("DELETE FROM enr_lastfm_tags WHERE entity_key = ? OR entity_key = ?", [a_norm, f"{a_norm}::{full_norm}"])
+    c.execute("DELETE FROM enr_spotify_artist")
+    c.execute("DELETE FROM enr_mb_artist")
+    c.execute("DELETE FROM enr_mb_recording")
+    # Track has a heavy umbrella 'electronic' tag (100) alongside specific 'deep house' (60)
+    c.executemany(
+        "INSERT INTO enr_lastfm_tags VALUES (?, ?, ?, ?, TIMESTAMP '2026-10-22 00:00:00')",
+        [("track", f"{a_norm}::{full_norm}", "electronic", 100),
+         ("track", f"{a_norm}::{full_norm}", "deep house", 60)],
+    )
+    genre.run(c)
+    rows = c.execute("SELECT parent_genre, style, weight, level FROM track_genre WHERE track_id = ?", [tid]).fetchall()
+    assert rows == [("electronic", "deep house", 1.0, "track")]
+

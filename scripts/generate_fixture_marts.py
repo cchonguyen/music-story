@@ -15,9 +15,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-if not hasattr(dt, "UTC"):
-    dt.UTC = dt.UTC
-UTC = dt.UTC
+UTC = getattr(dt, "UTC", dt.timezone.utc)
+dt.UTC = UTC
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -66,7 +65,7 @@ def quantile_cont(vals: list[float], q: float) -> float:
 def build_all_marts() -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     marker = CACHE_DIR / "_ready.json"
-    if marker.exists() and (CACHE_DIR / "year.json").exists() and (CACHE_DIR / "explorer_events_2021_on.json").exists():
+    if marker.exists() and (CACHE_DIR / "year.json").exists() and (CACHE_DIR / "explorer_plays.json").exists():
         return
 
     g = Gen()
@@ -325,6 +324,7 @@ def build_all_marts() -> None:
             "shuffle": row["shuffle"] if row else None,
             "reason_start": (row["reason_start"] or None) if row else None,
             "reason_end": (row["reason_end"] or None) if row else None,
+            "incognito": bool(row["incognito_mode"]) if row else False,
             "is_skip": e["is_skip"],
         }
         if e["is_skip"]:
@@ -780,17 +780,21 @@ def build_all_marts() -> None:
         for (y, lc, ac), aids in sorted(pass_groups.items())
     ]
 
-    # 6. explorer_events
-    explorer_events = []
+    # 6. explorer_plays (matching sql/marts/40_explorer.sql W12 privacy gate)
+    explorer_plays = []
     for x in plays_list + skips_list:
+        if x.get("incognito"):
+            continue
         rec = x["rec"]
         a = A[x["artist_id"]]
         alb = AL.get(x["album_id"], None)
         st = a.genre
         pg = parent_map[st]
-        explorer_events.append(
+        explorer_plays.append(
             {
-                "ts": x["started_at_local"].isoformat(),
+                "day": x["started_at_local"].date().isoformat(),
+                "hour": x["started_at_local"].hour,
+                "weekday": x["started_at_local"].isoweekday(),
                 "artist": a.name,
                 "title": rec.spotify_title(A),
                 "album": alb.name if alb else None,
@@ -805,7 +809,7 @@ def build_all_marts() -> None:
                 "source": x["source"],
             }
         )
-    explorer_events.sort(key=lambda r: (r["artist"], r["album"] or "", r["title"], r["ts"]))
+    explorer_plays.sort(key=lambda r: (r["artist"], r["album"] or "", r["title"], r["day"]))
 
     outputs = {
         "year": mart_year,
@@ -829,11 +833,7 @@ def build_all_marts() -> None:
         "intent_skip": mart_intent_skip,
         "tempo_pulse": mart_tempo_pulse,
         "artist_passport": mart_artist_passport,
-        "explorer_events": explorer_events,
-        "explorer_events_2007_2011": [r for r in explorer_events if 2007 <= int(r["ts"][:4]) <= 2011],
-        "explorer_events_2012_2015": [r for r in explorer_events if 2012 <= int(r["ts"][:4]) <= 2015],
-        "explorer_events_2016_2020": [r for r in explorer_events if 2016 <= int(r["ts"][:4]) <= 2020],
-        "explorer_events_2021_on": [r for r in explorer_events if int(r["ts"][:4]) >= 2021],
+        "explorer_plays": explorer_plays,
     }
 
     for name, rows in outputs.items():
@@ -849,7 +849,7 @@ if __name__ == "__main__":
             sys.stdout.write(target.read_text())
             sys.exit(0)
     elif len(sys.argv) == 3 and sys.argv[1] == "--parquet":
-        # Emit explorer_events JSON bytes when DuckDB Parquet export is unavailable in stdlib python
-        target = CACHE_DIR / "explorer_events.json"
+        # Emit explorer_plays JSON bytes when DuckDB Parquet export is unavailable in stdlib python
+        target = CACHE_DIR / "explorer_plays.json"
         sys.stdout.buffer.write(target.read_bytes())
         sys.exit(0)
