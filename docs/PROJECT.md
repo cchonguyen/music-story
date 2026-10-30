@@ -212,6 +212,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-27 | Artist genres for Concert Tracker as an exported JSON file (`pipeline/artist_genre.py`), not a table or an API | The database stays on Charlie's Mac; Concert Tracker runs on Cloudflare and cannot reach it. Shipping the genre map with it keeps one curated map for both apps. Rejected: a published endpoint behind Access (couples the two deploys) |
 | 2026-10-29 | Explorer privacy gate: incognito plays and skips are left out, and time is only `day`, `hour` and ISO `weekday` (no timestamps) | The plan's W12 gate, applied to the one row-level export so there is a single data path; the explorer's year, month and first or last play use only `day` |
 | 2026-10-27 | Explorer rows include skips, flagged `is_skip` | Skip rate per artist or track needs them; counts and hours leave them out so they match the marts |
+| 2026-10-30 | Non-destructive data preservation invariant | Raw listening telemetry is never destructively overwritten or pruned; all recalculations, merges, and enrichments must be additive or non-destructive views/marts |
 
 ## 8. Open items
 

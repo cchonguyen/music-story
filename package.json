@@ -1,0 +1,13 @@
+{
+  "name": "music-story",
+  "private": true,
+  "version": "1.3.0",
+  "type": "module",
+  "scripts": {
+    "predev": "bash scripts/uv_shim.sh --setup",
+    "dev": "cd site && npm run dev",
+    "prebuild": "bash scripts/uv_shim.sh --setup",
+    "build": "cd site && npm run build",
+    "lint": "node --check site/observablehq.config.js && node --check site/src/specificationBaseline.js"
+  }
+}
