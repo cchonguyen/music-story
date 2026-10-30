@@ -15,9 +15,15 @@ async function openExplorer() {
   await instance.instantiate(bundle.mainModule, bundle.pthreadWorker);
   URL.revokeObjectURL(workerUrl);
   const file = await FileAttachment("data/plays_explorer.parquet").arrayBuffer();
-  await instance.registerFileBuffer("plays.parquet", new Uint8Array(file));
+  const bytes = new Uint8Array(file);
   const conn = await instance.connect();
-  await conn.query("CREATE TABLE plays AS SELECT * FROM 'plays.parquet'");
+  if (bytes[0] === 0x50) {
+    await instance.registerFileBuffer("plays.parquet", bytes);
+    await conn.query("CREATE TABLE plays AS SELECT * FROM 'plays.parquet'");
+  } else {
+    await instance.registerFileText("plays.json", new TextDecoder().decode(bytes));
+    await conn.query("CREATE TABLE plays AS SELECT CAST(day AS DATE) AS day, CAST(hour AS TINYINT) AS hour, CAST(weekday AS TINYINT) AS weekday, artist, title, album, artist_norm, title_norm, parent_genre, style, CAST(minutes AS FLOAT) AS minutes, is_skip, platform, country, source FROM read_json_auto('plays.json')");
+  }
   return conn;
 }
 

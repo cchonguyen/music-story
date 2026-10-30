@@ -1,5 +1,5 @@
 # SESSION HANDOFF (Updated by Google AI Studio)
-- **Active Branch / State:** `main` — Vibe Mode; fixed "100% Share within Parent Genre" under Styles within a parent genre in `site/src/genres.md` to render a true 100% stacked area chart per year
-- **Files Modified by AI Studio:** `site/src/genres.md`, `scripts/generate_fixture_marts.py`, `scripts/uv_shim.sh`, `.spec/SESSION_HANDOFF.md`
-- **Verification Status:** Verified Observable site build (`compile_applet`) including all 4 `explorer_events_*` chunks and the 100% stacked sub-style chart in `genres.md`; Claude should run `uv run pytest` next.
-- **Immediate Next Step for Claude:** Run `uv run pytest` and `cd site && bun run build` locally to verify all tests and static site outputs.
+- **Active Branch / State:** `main` — Vibe Mode; updated `pipeline/genre.py` (`BUILD_SQL`) to disaggregate redundant umbrella self-tags (`style = parent_genre`) into specific sub-styles (`style <> parent_genre`) within the same `(track_id, parent_genre)` while preserving exact parent-genre weights, and added `summary` and `inspect` CLI commands
+- **Files Modified by AI Studio:** `pipeline/genre.py`, `tests/test_genre_fixture.py`, `scripts/generate_fixture_marts.py`, `scripts/uv_shim.sh`, `site/src/genres.md`, `site/src/explorer.md`, `.spec/SESSION_HANDOFF.md`
+- **Verification Status:** Verified `compile_applet` and syntax/query structure; Claude should run `uv run pytest tests/test_genre_fixture.py` and rebuild `track_genre` + marts on `build/music.duckdb`.
+- **Immediate Next Step for Claude:** Run `uv run pytest` to verify `test_umbrella_style_disaggregates_to_substyles` passes, then run `uv run python -m pipeline.build_pipeline --from 06` on `build/music.duckdb`.
