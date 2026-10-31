@@ -66,7 +66,14 @@ def quantile_cont(vals: list[float], q: float) -> float:
 def build_all_marts() -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     marker = CACHE_DIR / "_ready.json"
-    if marker.exists() and (CACHE_DIR / "year.json").exists() and (CACHE_DIR / "explorer_plays.json").exists():
+    if (
+        marker.exists()
+        and (CACHE_DIR / "year.json").exists()
+        and (CACHE_DIR / "explorer_plays.json").exists()
+        and (CACHE_DIR / "genre_xray.json").exists()
+        and (CACHE_DIR / "genre_hierarchy.json").exists()
+        and (CACHE_DIR / "genre_clock.json").exists()
+    ):
         return
 
     g = Gen()
@@ -812,6 +819,163 @@ def build_all_marts() -> None:
         )
     explorer_plays.sort(key=lambda r: (r["artist"], r["album"] or "", r["title"], r["day"]))
 
+    # 7. genre_xray (uniquely keyed on 4-tuple: artist_norm, title_norm, parent_genre, style)
+    plays_per_rec_cnt = Counter(p["rec"].rid for p in plays_list)
+    top60_isrcs = {
+        rec.isrc for rec in sorted(R.values(), key=lambda x: -plays_per_rec_cnt[x.rid])[:60]
+    }
+    plays_by_tid_aid: dict[tuple[str, int], list[dict]] = defaultdict(list)
+    for p in plays_list:
+        plays_by_tid_aid[(p["track_id"], p["artist_id"])].append(p)
+    skips_by_tid_aid: dict[tuple[str, int], int] = Counter(
+        (s["track_id"], s["artist_id"]) for s in skips_list
+    )
+
+    pair_keys_by_4tuple: dict[tuple[str, str, str, str], list[dict]] = defaultdict(list)
+    all_tid_aid = (
+        set(plays_by_tid_aid.keys())
+        | set(skips_by_tid_aid.keys())
+        | {(rec.isrc, rec.artist) for rec in R.values()}
+    )
+    rec_by_isrc = {rec.isrc: rec for rec in R.values()}
+    for tid, aid in sorted(all_tid_aid):
+        rec = rec_by_isrc[tid]
+        a = A[aid]
+        st = A[rec.artist].genre
+        pg = parent_map[st]
+        p_items = plays_by_tid_aid.get((tid, aid), [])
+        sk_cnt = skips_by_tid_aid.get((tid, aid), 0)
+        lvl = "track" if tid in top60_isrcs else "artist"
+        pair_keys_by_4tuple[(a.norm, rec.full_norm, pg, st)].append(
+            {
+                "track_id": tid,
+                "artist_id": aid,
+                "artist": a.name,
+                "title": rec.spotify_title(A),
+                "artist_norm": a.norm,
+                "title_norm": rec.full_norm,
+                "parent_genre": pg,
+                "style": st,
+                "weight": 1.0,
+                "level": lvl,
+                "secondary_styles": "",
+                "plays": len(p_items),
+                "ms_imputed": sum(x["ms_imputed"] for x in p_items),
+                "skips": sk_cnt,
+                "first_year": min((x["year"] for x in p_items), default=None),
+                "last_year": max((x["year"] for x in p_items), default=None),
+                "p_items": p_items,
+            }
+        )
+
+    mart_genre_xray = []
+    for (anorm, tnorm, pg, st), members in sorted(pair_keys_by_4tuple.items()):
+        rep = max(members, key=lambda m: (m["plays"], m["track_id"]))
+        tot_plays = sum(m["plays"] for m in members)
+        tot_ms = sum(m["ms_imputed"] for m in members)
+        tot_skips = sum(m["skips"] for m in members)
+        all_p = [p for m in members for p in m["p_items"]]
+        if all_p:
+            hr_cnt = Counter(p["hour"] for p in all_p)
+            peak_hr = min(hr_cnt, key=lambda h: (-hr_cnt[h], h))
+            c_cnt = Counter((p["country"] or "US") for p in all_p)
+            top_c = min(c_cnt, key=lambda c: (-c_cnt[c], c))
+            first_y = min(p["year"] for p in all_p)
+            last_y = max(p["year"] for p in all_p)
+        else:
+            peak_hr = 12
+            top_c = "US"
+            first_y = 2020
+            last_y = 2026
+        suppressed = (
+            f"disaggregated -> {st}" if st != pg else f"umbrella retained ({pg})"
+        )
+        mart_genre_xray.append(
+            {
+                "track_id": rep["track_id"],
+                "title": rep["title"],
+                "artist": rep["artist"],
+                "artist_norm": anorm,
+                "title_norm": tnorm,
+                "parent_genre": pg,
+                "style": st,
+                "primary_weight": 1.0,
+                "level": rep["level"],
+                "secondary_styles": rep["secondary_styles"],
+                "suppressed_umbrellas": suppressed,
+                "plays": tot_plays,
+                "listen_hours": round(tot_ms / 3.6e6, 2),
+                "skip_rate": round(tot_skips / (tot_plays + tot_skips), 4)
+                if (tot_plays + tot_skips) > 0
+                else 0.0,
+                "peak_local_hour": peak_hr,
+                "top_country": top_c,
+                "first_year": first_y,
+                "last_year": last_y,
+            }
+        )
+    mart_genre_xray.sort(key=lambda r: (r["track_id"], r["artist_norm"], r["title_norm"]))
+
+    # 8. genre_hierarchy (Parent Genre -> Sub-Style -> Top 15 Artists)
+    sa_groups: dict[tuple[str, str, int], list[dict]] = defaultdict(list)
+    parent_totals: dict[str, float] = defaultdict(float)
+    style_totals: dict[tuple[str, str], float] = defaultdict(float)
+    for p in plays_list:
+        st = A[p["artist_id"]].genre
+        pg = parent_map[st]
+        sa_groups[(pg, st, p["artist_id"])].append(p)
+        parent_totals[pg] += 1.0
+        style_totals[(pg, st)] += 1.0
+
+    by_pg_st: dict[tuple[str, str], list[tuple[int, list[dict]]]] = defaultdict(list)
+    for (pg, st, aid), items in sa_groups.items():
+        by_pg_st[(pg, st)].append((aid, items))
+
+    mart_genre_hierarchy = []
+    for (pg, st), aid_items in sorted(by_pg_st.items()):
+        ranked = sorted(aid_items, key=lambda kv: (-len(kv[1]), kv[0]))
+        st_tot = style_totals[(pg, st)]
+        pg_tot = parent_totals[pg]
+        for rk, (aid, items) in enumerate(ranked[:15], 1):
+            w_plays = float(len(items))
+            mart_genre_hierarchy.append(
+                {
+                    "parent_genre": pg,
+                    "style": st,
+                    "artist_id": aid,
+                    "artist": A[aid].name,
+                    "plays": len(items),
+                    "plays_weighted": round(w_plays, 2),
+                    "listen_hours": round(sum(i["ms_imputed"] for i in items) / 3.6e6, 2),
+                    "tracks": len({i["track_id"] for i in items}),
+                    "style_share_of_parent": round(st_tot / pg_tot, 4) if pg_tot else 0.0,
+                    "artist_share_of_style": round(w_plays / st_tot, 4) if st_tot else 0.0,
+                    "artist_rank_in_style": rk,
+                }
+            )
+
+    # 9. genre_clock (local-time circadian genre rhythm:started_at_local)
+    gc_groups: dict[tuple[str, str, str, int], list[dict]] = defaultdict(list)
+    for p in plays_list:
+        st = A[p["artist_id"]].genre
+        pg = parent_map[st]
+        wtype = "weekend" if p["weekday"] in (6, 7) else "weekday"
+        gc_groups[(pg, st, wtype, p["hour"])].append(p)
+        gc_groups[(pg, st, "all", p["hour"])].append(p)
+
+    mart_genre_clock = [
+        {
+            "parent_genre": pg,
+            "style": st,
+            "weekday_type": wtype,
+            "hour": hr,
+            "plays": len(items),
+            "plays_weighted": round(float(len(items)), 2),
+            "listen_hours": round(sum(i["ms_imputed"] for i in items) / 3.6e6, 2),
+        }
+        for (pg, st, wtype, hr), items in sorted(gc_groups.items())
+    ]
+
     outputs = {
         "year": mart_year,
         "artist_year": mart_artist_year,
@@ -834,6 +998,9 @@ def build_all_marts() -> None:
         "intent_skip": mart_intent_skip,
         "tempo_pulse": mart_tempo_pulse,
         "artist_passport": mart_artist_passport,
+        "genre_xray": mart_genre_xray,
+        "genre_hierarchy": mart_genre_hierarchy,
+        "genre_clock": mart_genre_clock,
         "explorer_plays": explorer_plays,
     }
 

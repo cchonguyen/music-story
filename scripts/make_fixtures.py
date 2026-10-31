@@ -933,9 +933,9 @@ def build_db(g, listens, sp_rows, sp_of_listen, lfm_rows, lfm_of_listen, dupe_ro
     parent = {"indie rock": "rock", "electro house": "electronic", "dubstep": "electronic", "house": "electronic",
               "techno": "electronic", "ambient": "electronic", "hip hop": "hip hop", "k-pop": "pop", "v-pop": "pop",
               "j-pop": "pop"}
-    gm = [(t, t, pg, True) for t, pg in parent.items()]
-    gm += [("seen live", None, None, False), ("favorites", None, None, False)]
-    gm += [(str(y), None, None, False) for y in range(1995, 2019)]
+    gm = [(t, t, pg, True, t == pg) for t, pg in parent.items()]
+    gm += [("seen live", None, None, False, False), ("favorites", None, None, False, False)]
+    gm += [(str(y), None, None, False, False) for y in range(1995, 2019)]
     insert(con, "genre_map", gm)
     insert(con, "track_genre", [
         (rec.isrc, parent[A[rec.artist].genre], A[rec.artist].genre, 1.0, "artist") for rec in R.values()])

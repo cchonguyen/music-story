@@ -46,3 +46,16 @@ def test_cache_schema_applies_to_sqlite():
     db.executescript(config.CACHE_SCHEMA_SQL.read_text())
     names = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert names == {"http_cache", "fetch_queue", "api_pause", "request_log", "api_limit"}
+
+
+def test_genre_map_columns():
+    con = fresh_db()
+    cols = [(r[0], r[1], r[2]) for r in con.execute("DESCRIBE genre_map").fetchall()]
+    assert cols == [
+        ("tag", "VARCHAR", "NO"),
+        ("style", "VARCHAR", "YES"),
+        ("parent_genre", "VARCHAR", "YES"),
+        ("is_genre", "BOOLEAN", "NO"),
+        ("is_umbrella", "BOOLEAN", "NO"),
+    ]
+

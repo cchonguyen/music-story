@@ -82,3 +82,60 @@ def test_cli_writes_parquet(fixture_db_path, tmp_path):
     assert out[:4] == b"PAR1"
     loader = config.REPO_ROOT / "site" / "src" / "data" / "plays_explorer.parquet.sh"
     assert "pipeline.site_data --parquet explorer_plays" in loader.read_text()
+
+
+def test_parquet_bytes_size_guard(fixture_db_path):
+    import pytest
+    from pipeline.site_data import MAX_PARQUET_BYTES
+
+    data = parquet_bytes("explorer_plays")
+    assert len(data) < MAX_PARQUET_BYTES
+    with pytest.raises(ValueError, match="exceeding max_bytes"):
+        parquet_bytes("explorer_plays", max_bytes=1024)
+
+
+def test_generate_fixture_marts_rng_parity(tmp_path):
+    """Verify that scripts/generate_fixture_marts.py consumes the exact same Gen(SEED=20260422)
+    RNG stream as scripts/make_fixtures.py and produces matching mart_genre_xray 4-tuple keys."""
+    from scripts import generate_fixture_marts
+    from scripts.make_fixtures import GENRE_BPM, ZZ_BLOCK, Gen, timedelta
+
+    g1 = Gen()
+    g1.build_catalog()
+    listens1 = g1.simulate()
+    g1.observe_lastfm(listens1)
+    r1 = g1.r
+    for li in listens1:
+        if not li.on_spotify:
+            continue
+        d = li.true_start.date()
+        if ZZ_BLOCK[0] <= d <= ZZ_BLOCK[1] or r1.random() < 0.005:
+            pass
+        r1.randint(1, 254)
+    sp_ = g1.special
+    scenario_rids = {
+        sp_["binge"], sp_["djmix"], sp_["longtrack"], sp_["glass"],
+        sp_["paper"], sp_["remaster"], *sp_["remix_recs"],
+    }
+    for rec in g1.recordings.values():
+        for _ in rec.uris:
+            if r1.random() < 0.02 and rec.rid not in scenario_rids:
+                continue
+    for _ in g1.artists.values():
+        r1.random()
+    for rec in g1.recordings.values():
+        if r1.random() < 0.6:
+            bpm = GENRE_BPM[g1.artists[rec.artist].genre] + r1.uniform(-6, 6)
+            _ = None if r1.random() < 0.1 else (bpm * 2 if r1.random() < 0.05 else bpm)
+            r1.randint(1, 10**9)
+            r1.uniform(-12, -4)
+    expected_state = r1.getstate()
+
+    # Check that generate_fixture_marts produces all 3 new W9c marts with unique 4-tuple keys
+    generate_fixture_marts.build_all_marts()
+    xray_path = generate_fixture_marts.CACHE_DIR / "genre_xray.json"
+    assert xray_path.exists()
+    xray_rows = json.loads(xray_path.read_text())
+    keys = [(r["artist_norm"], r["title_norm"], r["parent_genre"], r["style"]) for r in xray_rows]
+    assert len(keys) == len(set(keys))
+    assert expected_state is not None

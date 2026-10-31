@@ -171,3 +171,246 @@ FROM plays p
 JOIN dim_artist a USING (artist_id)
 GROUP BY 1, 2, 3;
 
+-- 7. W9c Track Genre Lineage X-Ray (uniquely keyed on 4-tuple: artist_norm, title_norm, parent_genre, style)
+CREATE OR REPLACE TABLE mart_genre_xray AS
+WITH top_genre AS (
+    SELECT track_id, parent_genre, style, weight, level
+    FROM track_genre
+    QUALIFY row_number() OVER (PARTITION BY track_id ORDER BY weight DESC, parent_genre, style) = 1
+),
+sec_genre AS (
+    SELECT g.track_id,
+           string_agg(
+               g.style || ' (' || round(g.weight * 100, 0)::INT::VARCHAR || '%)',
+               ', ' ORDER BY g.weight DESC, g.style
+           ) AS secondary_styles
+    FROM track_genre g
+    JOIN top_genre tg
+      ON tg.track_id = g.track_id
+     AND NOT (tg.parent_genre = g.parent_genre AND tg.style = g.style)
+    GROUP BY 1
+),
+track_artist_pairs AS (
+    SELECT DISTINCT track_id, artist_id FROM plays
+    UNION
+    SELECT DISTINCT track_id, artist_id FROM skips
+    UNION
+    SELECT track_id, primary_artist_id AS artist_id FROM dim_track
+),
+play_stats AS (
+    SELECT track_id,
+           artist_id,
+           count(*) AS plays,
+           sum(ms_imputed) AS ms_imputed,
+           min(year(started_at_local)) AS first_year,
+           max(year(started_at_local)) AS last_year
+    FROM plays
+    GROUP BY 1, 2
+),
+skip_stats AS (
+    SELECT track_id,
+           artist_id,
+           count(*) AS skips
+    FROM skips
+    GROUP BY 1, 2
+),
+pair_keys AS (
+    SELECT tap.track_id,
+           tap.artist_id,
+           a.name AS artist,
+           t.title,
+           a.artist_norm,
+           t.full_norm AS title_norm,
+           tg.parent_genre,
+           tg.style,
+           tg.weight,
+           tg.level,
+           coalesce(sg.secondary_styles, '') AS secondary_styles,
+           coalesce(ps.plays, 0) AS plays,
+           coalesce(ps.ms_imputed, 0) AS ms_imputed,
+           coalesce(ss.skips, 0) AS skips,
+           ps.first_year,
+           ps.last_year
+    FROM track_artist_pairs tap
+    JOIN dim_artist a USING (artist_id)
+    JOIN dim_track t USING (track_id)
+    JOIN top_genre tg USING (track_id)
+    LEFT JOIN sec_genre sg USING (track_id)
+    LEFT JOIN play_stats ps USING (track_id, artist_id)
+    LEFT JOIN skip_stats ss USING (track_id, artist_id)
+),
+hr_counts AS (
+    SELECT pk.artist_norm,
+           pk.title_norm,
+           pk.parent_genre,
+           pk.style,
+           hour(p.started_at_local) AS hr,
+           count(*) AS n
+    FROM plays p
+    JOIN pair_keys pk USING (track_id, artist_id)
+    GROUP BY 1, 2, 3, 4, 5
+),
+peak_hr AS (
+    SELECT artist_norm,
+           title_norm,
+           parent_genre,
+           style,
+           hr AS peak_local_hour
+    FROM hr_counts
+    QUALIFY row_number() OVER (
+        PARTITION BY artist_norm, title_norm, parent_genre, style
+        ORDER BY n DESC, hr ASC
+    ) = 1
+),
+country_counts AS (
+    SELECT pk.artist_norm,
+           pk.title_norm,
+           pk.parent_genre,
+           pk.style,
+           coalesce(p.country, 'US') AS country,
+           count(*) AS n
+    FROM plays p
+    JOIN pair_keys pk USING (track_id, artist_id)
+    GROUP BY 1, 2, 3, 4, 5
+),
+modal_country AS (
+    SELECT artist_norm,
+           title_norm,
+           parent_genre,
+           style,
+           country AS top_country
+    FROM country_counts
+    QUALIFY row_number() OVER (
+        PARTITION BY artist_norm, title_norm, parent_genre, style
+        ORDER BY n DESC, country ASC
+    ) = 1
+),
+grouped AS (
+    SELECT pk.artist_norm,
+           pk.title_norm,
+           pk.parent_genre,
+           pk.style,
+           arg_max(pk.track_id, pk.plays * 1000000 - coalesce(length(pk.track_id), 0)) AS track_id,
+           arg_max(pk.title, pk.plays) AS title,
+           arg_max(pk.artist, pk.plays) AS artist,
+           round(
+               coalesce(
+                   sum(pk.weight * pk.plays) / nullif(sum(pk.plays), 0),
+                   avg(pk.weight)
+               ),
+               4
+           ) AS primary_weight,
+           arg_max(pk.level, pk.plays) AS level,
+           arg_max(pk.secondary_styles, pk.plays) AS secondary_styles,
+           CASE
+               WHEN pk.style <> pk.parent_genre THEN 'disaggregated -> ' || pk.style
+               ELSE 'umbrella retained (' || pk.parent_genre || ')'
+           END AS suppressed_umbrellas,
+           sum(pk.plays)::BIGINT AS plays,
+           round(sum(pk.ms_imputed) / 3.6e6, 2) AS listen_hours,
+           round(
+               sum(pk.skips)::DOUBLE / nullif(sum(pk.plays) + sum(pk.skips), 0),
+               4
+           ) AS skip_rate,
+           min(pk.first_year) AS first_year,
+           max(pk.last_year) AS last_year
+    FROM pair_keys pk
+    GROUP BY 1, 2, 3, 4
+)
+SELECT g.track_id,
+       g.title,
+       g.artist,
+       g.artist_norm,
+       g.title_norm,
+       g.parent_genre,
+       g.style,
+       g.primary_weight,
+       g.level,
+       g.secondary_styles,
+       g.suppressed_umbrellas,
+       g.plays,
+       g.listen_hours,
+       coalesce(g.skip_rate, 0.0) AS skip_rate,
+       coalesce(ph.peak_local_hour, 12) AS peak_local_hour,
+       coalesce(mc.top_country, 'US') AS top_country,
+       coalesce(g.first_year, 2020) AS first_year,
+       coalesce(g.last_year, 2026) AS last_year
+FROM grouped g
+LEFT JOIN peak_hr ph USING (artist_norm, title_norm, parent_genre, style)
+LEFT JOIN modal_country mc USING (artist_norm, title_norm, parent_genre, style);
+
+-- 8. W9c Genre -> Sub-Style -> Artist Hierarchy Breakdown
+CREATE OR REPLACE TABLE mart_genre_hierarchy AS
+WITH style_artist AS (
+    SELECT g.parent_genre,
+           g.style,
+           p.artist_id,
+           a.name AS artist,
+           count(*) AS plays,
+           sum(g.weight) AS plays_weighted,
+           sum(p.ms_imputed) / 3.6e6 AS listen_hours,
+           count(DISTINCT p.track_id) AS tracks
+    FROM plays p
+    JOIN track_genre g USING (track_id)
+    JOIN dim_artist a USING (artist_id)
+    GROUP BY 1, 2, 3, 4
+),
+totals AS (
+    SELECT *,
+           sum(plays_weighted) OVER (PARTITION BY parent_genre, style) AS style_weighted,
+           sum(plays_weighted) OVER (PARTITION BY parent_genre) AS parent_weighted,
+           row_number() OVER (
+               PARTITION BY parent_genre, style
+               ORDER BY plays_weighted DESC, plays DESC, artist_id ASC
+           ) AS artist_rank_in_style
+    FROM style_artist
+)
+SELECT parent_genre,
+       style,
+       artist_id,
+       artist,
+       plays,
+       round(plays_weighted, 2) AS plays_weighted,
+       round(listen_hours, 2) AS listen_hours,
+       tracks,
+       round(style_weighted / nullif(parent_weighted, 0), 4) AS style_share_of_parent,
+       round(plays_weighted / nullif(style_weighted, 0), 4) AS artist_share_of_style,
+       artist_rank_in_style
+FROM totals
+WHERE artist_rank_in_style <= 15;
+
+-- 9. W9c Local-Time Circadian Genre Clock (uses plays.started_at_local)
+CREATE OR REPLACE TABLE mart_genre_clock AS
+WITH base AS (
+    SELECT g.parent_genre,
+           g.style,
+           CASE
+               WHEN isodow(p.started_at_local) IN (6, 7) THEN 'weekend'
+               ELSE 'weekday'
+           END AS weekday_type,
+           hour(p.started_at_local) AS hour,
+           count(*) AS plays,
+           sum(g.weight) AS plays_weighted,
+           sum(p.ms_imputed) / 3.6e6 AS listen_hours
+    FROM plays p
+    JOIN track_genre g USING (track_id)
+    GROUP BY 1, 2, 3, 4
+)
+SELECT parent_genre,
+       style,
+       weekday_type,
+       hour,
+       plays,
+       round(plays_weighted, 2) AS plays_weighted,
+       round(listen_hours, 2) AS listen_hours
+FROM base
+UNION ALL
+SELECT parent_genre,
+       style,
+       'all' AS weekday_type,
+       hour,
+       sum(plays)::BIGINT AS plays,
+       round(sum(plays_weighted), 2) AS plays_weighted,
+       round(sum(listen_hours), 2) AS listen_hours
+FROM base
+GROUP BY 1, 2, 3, 4;

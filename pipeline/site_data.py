@@ -64,6 +64,7 @@ def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb
 PARQUET_EXPORTS = {
     "explorer_plays": "artist, album, title, day",
 }
+MAX_PARQUET_BYTES = 20 * 1024 * 1024  # 20 MiB safety ceiling below Cloudflare Workers 25 MiB limit
 
 
 def _site_con(db: Path | None) -> duckdb.DuckDBPyConnection:
@@ -77,10 +78,13 @@ def _site_con(db: Path | None) -> duckdb.DuckDBPyConnection:
         has_pulse = con.execute(
             "SELECT count(*) FROM information_schema.tables WHERE table_name = 'mart_tempo_pulse'"
         ).fetchone()[0] > 0
+        has_xray = con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'mart_genre_xray'"
+        ).fetchone()[0] > 0
         has_plays = con.execute(
             "SELECT count(*) FROM information_schema.tables WHERE table_name = 'plays'"
         ).fetchone()[0] > 0
-        if (has_day and has_pulse) or not has_plays:
+        if (has_day and has_pulse and has_xray) or not has_plays:
             return con
         con.close()
         con_rw = duckdb.connect(str(db))
@@ -104,7 +108,7 @@ def mart_rows(name: str, db: Path | None = None) -> list[dict]:
         con.close()
 
 
-def parquet_bytes(name: str, db: Path | None = None) -> bytes:
+def parquet_bytes(name: str, db: Path | None = None, max_bytes: int = MAX_PARQUET_BYTES) -> bytes:
     """One of PARQUET_EXPORTS as a Zstd Parquet file."""
     order = PARQUET_EXPORTS[name]
     con = _site_con(db)
@@ -113,7 +117,12 @@ def parquet_bytes(name: str, db: Path | None = None) -> bytes:
             out = Path(tmp) / f"{name}.parquet"
             con.execute(f"COPY (SELECT * FROM {name} ORDER BY {order}) TO '{out}' "
                         "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)")
-            return out.read_bytes()
+            data = out.read_bytes()
+            if len(data) > max_bytes:
+                raise ValueError(
+                    f"Parquet export {name!r} is {len(data)} bytes, exceeding max_bytes={max_bytes}"
+                )
+            return data
     finally:
         con.close()
 

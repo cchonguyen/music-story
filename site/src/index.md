@@ -153,12 +153,56 @@ Plot.plot({
 
 <!-- story: overview narrative -->
 
+### Annual Telemetry Summary Table (2007–2026)
+
+```js
+Inputs.table(
+  year
+    .slice()
+    .sort((a, b) => b.year - a.year)
+    .map((d) => ({
+      year: d.year,
+      plays: d.plays,
+      skips: d.skips,
+      listen_hours: Math.round(d.listen_hours * 10) / 10,
+      artists: d.artists,
+      new_artists: d.new_artists,
+      tracks: d.tracks,
+      new_tracks: d.new_tracks,
+      sessions: d.sessions
+    })),
+  {format: {year: String}, rows: 12}
+)
+```
+
 ## When I listen (19.5-Year Circadian Fingerprint)
 
 ```js
-const byCell = d3.rollups(clock, (v) => d3.sum(v, (d) => d.plays), (d) => d.weekday, (d) => d.hour)
+const clockYears = ["All Years", ...[...new Set(clock.map((d) => d.year))].sort((a, b) => b - a)];
+const indexClockYear = view(Inputs.select(clockYears, {label: "Circadian year filter", value: "All Years"}));
+```
+
+```js
+const filteredIndexClock = clock.filter((d) => indexClockYear === "All Years" || d.year === indexClockYear);
+const byCell = d3.rollups(filteredIndexClock, (v) => d3.sum(v, (d) => d.plays), (d) => d.weekday, (d) => d.hour)
   .flatMap(([weekday, hours]) => hours.map(([hour, plays]) => ({weekday, hour, plays})));
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const weekdaySummaryRows = d3.rollups(
+  byCell,
+  (v) => {
+    const total = d3.sum(v, (d) => d.plays);
+    const peak = d3.greatest(v, (d) => d.plays);
+    return {
+      plays: total,
+      peak_local_hour: peak ? `${String(peak.hour).padStart(2, "0")}:00` : "—",
+      peak_hour_plays: peak ? peak.plays : 0
+    };
+  },
+  (d) => d.weekday
+)
+  .sort((a, b) => a[0] - b[0])
+  .map(([w, stats]) => ({weekday: days[w - 1], ...stats}));
 ```
 
 ```js
@@ -168,4 +212,8 @@ Plot.plot({
   color: {legend: true, scheme: "YlGnBu", label: "Plays"},
   marks: [Plot.cell(byCell, {x: "hour", y: "weekday", fill: "plays", inset: 0.5, tip: true})]
 })
+```
+
+```js
+Inputs.table(weekdaySummaryRows, {rows: 7})
 ```
