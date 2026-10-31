@@ -406,7 +406,8 @@ CREATE OR REPLACE TABLE genre_map (
     tag           VARCHAR PRIMARY KEY,        -- lower-cased Last.fm / Spotify / MB tag
     style         VARCHAR,                    -- NULL when is_genre = false
     parent_genre  VARCHAR,
-    is_genre      BOOLEAN NOT NULL            -- false for 'seen live', 'favorites', years
+    is_genre      BOOLEAN NOT NULL,           -- false for 'seen live', 'favorites', years
+    is_umbrella   BOOLEAN NOT NULL            -- true for broad parent/scene catch-alls (electronic, edm, dance, indie, alternative, rap, style == parent_genre)
 );
 
 -- Weighted coalesce of track (1.0), album (0.7) and artist (0.5) tags after

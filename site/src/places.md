@@ -59,6 +59,27 @@ placeMode === "By Country (Top 8 + Other)"
     })
 ```
 
+```js
+const countrySummaryRows = d3.rollups(
+  known,
+  (v) => ({
+    plays: d3.sum(v, (d) => d.plays),
+    direct_plays: d3.sum(v, (d) => d.plays - (d.imputed_plays ?? 0)),
+    imputed_plays: d3.sum(v, (d) => d.imputed_plays ?? 0),
+    active_years: v.length,
+    first_year: d3.min(v, (d) => d.year),
+    last_year: d3.max(v, (d) => d.year)
+  }),
+  (d) => d.country
+)
+  .map(([country, s]) => ({country, ...s}))
+  .sort((a, b) => b.plays - a.plays);
+```
+
+```js
+Inputs.table(countrySummaryRows, {format: {first_year: String, last_year: String}, rows: 10})
+```
+
 <!-- story: places -->
 
 ## Musical Passport: Where the Music Comes From (`dim_artist.country`)
@@ -79,6 +100,22 @@ const artistOriginRows = d3.rollups(
   (d) => d.year,
   (d) => d.artist_country
 ).flatMap(([year, cs]) => cs.map(([artist_country, plays]) => ({year, artist_country, plays})));
+
+const totalPassportPlays = d3.sum(artistOriginRows, (d) => d.plays);
+const passportOriginTable = d3.rollups(
+  artistOriginRows,
+  (v) => {
+    const plays = d3.sum(v, (d) => d.plays);
+    return {
+      plays,
+      share: `${((plays / (totalPassportPlays || 1)) * 100).toFixed(1)}%`,
+      active_years: v.length
+    };
+  },
+  (d) => d.artist_country
+)
+  .map(([artist_country, s]) => ({artist_country, ...s}))
+  .sort((a, b) => b.plays - a.plays);
 ```
 
 ```js
@@ -101,6 +138,10 @@ passportScale.startsWith("100%")
         Plot.ruleY([0])
       ]
     })
+```
+
+```js
+Inputs.table(passportOriginTable, {rows: 10})
 ```
 
 ### Travel Resonance (International Trips vs. Artist Origins)
@@ -141,4 +182,14 @@ Plot.plot({
   y: {label: "Plays with unknown country", grid: true},
   marks: [Plot.barY(unknown, {x: "year", y: "plays", fill: "#64748b", tip: true}), Plot.ruleY([0])]
 })
+```
+
+```js
+Inputs.table(
+  unknown
+    .slice()
+    .sort((a, b) => b.year - a.year)
+    .map((d) => ({year: d.year, unknown_country_plays: d.plays})),
+  {format: {year: String}, rows: 10}
+)
 ```

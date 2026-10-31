@@ -16,8 +16,12 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W8 sessions `sql/05_sessions.sql` | Sonnet | done (main); lead fixed test (listen_ms sum) |
 | W9 genre `pipeline/genre.py` + csv | Sonnet | done (main); lead fix (MB genre join), 222-row map |
 | W10 chapters + charts | Sonnet | done (main), first try; site_data trims top-N marts |
-| Concert Tracker export `pipeline/artist_genre.py` | Opus lead | PR open 2026-10-27; `export` -> build/artist_genres.json |
+| Concert Tracker export `pipeline/artist_genre.py` | Opus lead | PR open 2026-10-27; `export` -> build/artist_genres.json (kept on legacy `MIN_SHARE = 0.15` for Concert Tracker v1) |
 | W10b explorer page | Opus lead | PR open 2026-10-27; DuckDB-Wasm from jsDelivr (self-hosted wasm > 25 MiB Workers limit). W12 gate applied 2026-10-29: no incognito, time as day/hour/weekday |
+| W9b genre umbrella disaggregation `pipeline/genre.py` + `data/genre_map.csv` | Opus | done; 5-col `genre_map` (`is_umbrella`), Option A consolidation, ramp `[0.10,0.30]` + two-stage soft-hinge `[0.10,0.20]` |
+| W9c genre xray, hierarchy & clock marts `sql/marts/50_insights.sql` | Sonnet | done; `mart_genre_xray` (4-tuple key), `mart_genre_hierarchy`, `mart_genre_clock` (`started_at_local`), 20 MiB Parquet guard |
+| W10c genres page upgrade `site/src/genres.md` | Sonnet | done; Parent/Sub-Style hierarchy, local-time circadian heatmap, Song Genre X-Ray table |
+| W10d explorer subfilters + chapter tables `site/src/*.md` | Sonnet | done; DuckDB-Wasm `LEFT JOIN xray`, multi-facet subfilters, synchronized `Inputs.table` across all chapters |
 
 Next:
 1. Fetch 2026-10-23: Last.fm done. Spotify locked out after ~600 req (until Fri 23 Oct 14:44 PT).

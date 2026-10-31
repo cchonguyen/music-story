@@ -183,6 +183,23 @@ obscurityScale === "100% Share of Plays"
     })
 ```
 
+```js
+const obscurityTableRows = d3.rollups(
+  obscurityYear,
+  (v) => ({
+    plays: d3.sum(v, (d) => d.plays),
+    listen_hours: Math.round(d3.sum(v, (d) => d.listen_hours) * 10) / 10,
+    distinct_artists_sum: d3.sum(v, (d) => d.artists),
+    active_years: v.length
+  }),
+  (d) => d.tier
+).map(([tier, s]) => ({tier, ...s}));
+```
+
+```js
+Inputs.table(obscurityTableRows, {rows: 6})
+```
+
 ### Early-Adopter Vanguard (First Listen Relative to Artist Career Start)
 
 Artists where your first recorded play was closest to (or right at) their MusicBrainz career `begin_year`.

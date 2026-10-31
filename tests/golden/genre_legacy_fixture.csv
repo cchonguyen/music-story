@@ -1,0 +1,502 @@
+# generated from HEAD 7f935d5 scripts/make_fixtures.py and pipeline/genre.py on dev_fixtures.duckdb (weights rounded to 9 decimal places)
+track_id,parent_genre,style,weight,level
+QZFX0400019,rock,indie rock,1.000000000,track
+QZFX0400020,rock,indie rock,1.000000000,track
+QZFX0400021,rock,indie rock,1.000000000,track
+QZFX0400022,rock,indie rock,1.000000000,artist
+QZFX0400023,rock,indie rock,1.000000000,artist
+QZFX0400024,rock,indie rock,1.000000000,track
+QZFX0400025,rock,indie rock,1.000000000,artist
+QZFX0400026,rock,indie rock,1.000000000,track
+QZFX0400174,hip hop,hip hop,1.000000000,track
+QZFX0400175,hip hop,hip hop,1.000000000,artist
+QZFX0400176,hip hop,hip hop,1.000000000,track
+QZFX0400177,hip hop,hip hop,1.000000000,track
+QZFX0400178,hip hop,hip hop,1.000000000,artist
+QZFX0400179,hip hop,hip hop,1.000000000,track
+QZFX0400379,pop,j-pop,1.000000000,track
+QZFX0400380,pop,j-pop,1.000000000,track
+QZFX0400381,pop,j-pop,1.000000000,track
+QZFX0400382,pop,j-pop,1.000000000,track
+QZFX0400383,pop,j-pop,1.000000000,artist
+QZFX0400384,pop,j-pop,1.000000000,track
+QZFX0400385,pop,j-pop,1.000000000,track
+QZFX0500088,electronic,electro house,1.000000000,track
+QZFX0500089,electronic,electro house,1.000000000,artist
+QZFX0500090,electronic,electro house,1.000000000,artist
+QZFX0500091,electronic,electro house,1.000000000,artist
+QZFX0500092,electronic,electro house,1.000000000,artist
+QZFX0500144,hip hop,hip hop,1.000000000,track
+QZFX0500145,hip hop,hip hop,1.000000000,track
+QZFX0500146,hip hop,hip hop,1.000000000,track
+QZFX0500147,hip hop,hip hop,1.000000000,artist
+QZFX0500148,hip hop,hip hop,1.000000000,track
+QZFX0500255,electronic,house,1.000000000,artist
+QZFX0500256,electronic,house,1.000000000,track
+QZFX0500257,electronic,house,1.000000000,track
+QZFX0500258,electronic,house,1.000000000,track
+QZFX0500259,electronic,house,1.000000000,track
+QZFX0500260,electronic,house,1.000000000,track
+QZFX0500346,pop,v-pop,1.000000000,track
+QZFX0500347,pop,v-pop,1.000000000,track
+QZFX0500348,pop,v-pop,1.000000000,track
+QZFX0500349,pop,v-pop,1.000000000,track
+QZFX0500350,pop,v-pop,1.000000000,artist
+QZFX0500351,pop,v-pop,1.000000000,artist
+QZFX0500352,pop,v-pop,1.000000000,track
+QZFX0500422,electronic,ambient,1.000000000,track
+QZFX0500423,electronic,ambient,1.000000000,track
+QZFX0500424,electronic,ambient,1.000000000,track
+QZFX0500425,electronic,ambient,1.000000000,track
+QZFX0700099,electronic,dubstep,1.000000000,track
+QZFX0700100,electronic,dubstep,1.000000000,track
+QZFX0700101,electronic,dubstep,1.000000000,track
+QZFX0700102,electronic,dubstep,1.000000000,artist
+QZFX0700103,electronic,dubstep,1.000000000,track
+QZFX0700104,electronic,dubstep,1.000000000,track
+QZFX0700105,electronic,dubstep,1.000000000,artist
+QZFX0700106,electronic,dubstep,1.000000000,track
+QZFX0700131,electronic,dubstep,1.000000000,track
+QZFX0700132,electronic,dubstep,1.000000000,artist
+QZFX0700133,electronic,dubstep,1.000000000,track
+QZFX0700134,electronic,dubstep,1.000000000,track
+QZFX0700135,electronic,dubstep,1.000000000,track
+QZFX0700136,electronic,dubstep,1.000000000,track
+QZFX0700137,electronic,dubstep,1.000000000,track
+QZFX0700138,electronic,dubstep,1.000000000,track
+QZFX0700269,electronic,house,1.000000000,track
+QZFX0700270,electronic,house,1.000000000,artist
+QZFX0700271,electronic,house,1.000000000,track
+QZFX0700272,electronic,house,1.000000000,artist
+QZFX0700273,electronic,house,1.000000000,artist
+QZFX0700274,electronic,house,1.000000000,track
+QZFX0700275,electronic,house,1.000000000,track
+QZFX0700294,electronic,techno,1.000000000,track
+QZFX0700295,electronic,techno,1.000000000,track
+QZFX0700296,electronic,techno,1.000000000,track
+QZFX0700297,electronic,techno,1.000000000,track
+QZFX0700298,electronic,techno,1.000000000,track
+QZFX0700299,electronic,techno,1.000000000,track
+QZFX0700325,pop,v-pop,1.000000000,track
+QZFX0700326,pop,v-pop,1.000000000,artist
+QZFX0700327,pop,v-pop,1.000000000,track
+QZFX0700328,pop,v-pop,1.000000000,track
+QZFX0700329,pop,v-pop,1.000000000,track
+QZFX0700330,pop,v-pop,1.000000000,track
+QZFX0700331,pop,v-pop,1.000000000,artist
+QZFX0700450,pop,v-pop,1.000000000,artist
+QZFX0700451,pop,v-pop,1.000000000,artist
+QZFX0700452,pop,v-pop,1.000000000,artist
+QZFX0700453,pop,v-pop,1.000000000,track
+QZFX0800039,rock,indie rock,1.000000000,track
+QZFX0800040,rock,indie rock,1.000000000,artist
+QZFX0800041,rock,indie rock,1.000000000,track
+QZFX0800042,rock,indie rock,1.000000000,artist
+QZFX0800043,rock,indie rock,1.000000000,track
+QZFX0800093,electronic,dubstep,1.000000000,track
+QZFX0800094,electronic,dubstep,1.000000000,track
+QZFX0800095,electronic,dubstep,1.000000000,track
+QZFX0800096,electronic,dubstep,1.000000000,artist
+QZFX0800097,electronic,dubstep,1.000000000,track
+QZFX0800098,electronic,dubstep,1.000000000,track
+QZFX0800164,hip hop,hip hop,1.000000000,track
+QZFX0800165,hip hop,hip hop,1.000000000,track
+QZFX0800166,hip hop,hip hop,1.000000000,track
+QZFX0800167,hip hop,hip hop,1.000000000,track
+QZFX0800219,pop,k-pop,1.000000000,track
+QZFX0800220,pop,k-pop,1.000000000,artist
+QZFX0800221,pop,k-pop,1.000000000,track
+QZFX0800222,pop,k-pop,1.000000000,artist
+QZFX0800223,pop,k-pop,1.000000000,artist
+QZFX0800224,pop,k-pop,1.000000000,track
+QZFX0800386,pop,j-pop,1.000000000,track
+QZFX0800387,pop,j-pop,1.000000000,artist
+QZFX0800388,pop,j-pop,1.000000000,track
+QZFX0800389,pop,j-pop,1.000000000,artist
+QZFX0800390,pop,j-pop,1.000000000,artist
+QZFX0800391,pop,j-pop,1.000000000,artist
+QZFX0800475,rock,indie rock,1.000000000,track
+QZFX0800476,rock,indie rock,1.000000000,track
+QZFX0800477,rock,indie rock,1.000000000,track
+QZFX0800478,rock,indie rock,1.000000000,track
+QZFX0800479,rock,indie rock,1.000000000,track
+QZFX0800480,rock,indie rock,1.000000000,track
+QZFX0800482,rock,indie rock,1.000000000,track
+QZFX0800483,rock,indie rock,1.000000000,track
+QZFX0800484,rock,indie rock,1.000000000,artist
+QZFX0800485,rock,indie rock,1.000000000,track
+QZFX0800486,rock,indie rock,1.000000000,track
+QZFX0800487,rock,indie rock,1.000000000,artist
+QZFX0900050,electronic,electro house,1.000000000,track
+QZFX0900051,electronic,electro house,1.000000000,artist
+QZFX0900052,electronic,electro house,1.000000000,artist
+QZFX0900053,electronic,electro house,1.000000000,track
+QZFX0900054,electronic,electro house,1.000000000,artist
+QZFX0900055,electronic,electro house,1.000000000,track
+QZFX0900056,electronic,electro house,1.000000000,artist
+QZFX0900057,electronic,electro house,1.000000000,artist
+QZFX0900058,electronic,electro house,1.000000000,track
+QZFX0900064,electronic,electro house,1.000000000,track
+QZFX0900065,electronic,electro house,1.000000000,track
+QZFX0900066,electronic,electro house,1.000000000,track
+QZFX0900067,electronic,electro house,1.000000000,track
+QZFX0900068,electronic,electro house,1.000000000,track
+QZFX0900069,electronic,electro house,1.000000000,track
+QZFX0900070,electronic,electro house,1.000000000,artist
+QZFX0900149,hip hop,hip hop,1.000000000,track
+QZFX0900150,hip hop,hip hop,1.000000000,track
+QZFX0900151,hip hop,hip hop,1.000000000,artist
+QZFX0900152,hip hop,hip hop,1.000000000,artist
+QZFX0900153,hip hop,hip hop,1.000000000,track
+QZFX0900154,hip hop,hip hop,1.000000000,artist
+QZFX0900213,pop,k-pop,1.000000000,track
+QZFX0900214,pop,k-pop,1.000000000,track
+QZFX0900215,pop,k-pop,1.000000000,artist
+QZFX0900216,pop,k-pop,1.000000000,artist
+QZFX0900217,pop,k-pop,1.000000000,track
+QZFX0900218,pop,k-pop,1.000000000,track
+QZFX0900284,electronic,techno,1.000000000,track
+QZFX0900285,electronic,techno,1.000000000,artist
+QZFX0900286,electronic,techno,1.000000000,track
+QZFX0900287,electronic,techno,1.000000000,track
+QZFX0900288,electronic,techno,1.000000000,track
+QZFX0900437,electronic,ambient,1.000000000,artist
+QZFX0900438,electronic,ambient,1.000000000,artist
+QZFX0900439,electronic,ambient,1.000000000,artist
+QZFX0900440,electronic,ambient,1.000000000,track
+QZFX0900441,electronic,ambient,1.000000000,track
+QZFX0900442,electronic,ambient,1.000000000,artist
+QZFX0900443,electronic,ambient,1.000000000,track
+QZFX0900444,electronic,ambient,1.000000000,artist
+QZFX1000445,electronic,ambient,1.000000000,artist
+QZFX1000446,electronic,ambient,1.000000000,track
+QZFX1000447,electronic,ambient,1.000000000,artist
+QZFX1000448,electronic,ambient,1.000000000,track
+QZFX1000449,electronic,ambient,1.000000000,track
+QZFX1100230,electronic,house,1.000000000,track
+QZFX1100231,electronic,house,1.000000000,track
+QZFX1100232,electronic,house,1.000000000,track
+QZFX1100233,electronic,house,1.000000000,artist
+QZFX1100234,electronic,house,1.000000000,track
+QZFX1100235,electronic,house,1.000000000,track
+QZFX1100236,electronic,house,1.000000000,track
+QZFX1100237,electronic,house,1.000000000,artist
+QZFX1100246,electronic,house,1.000000000,artist
+QZFX1100247,electronic,house,1.000000000,artist
+QZFX1100248,electronic,house,1.000000000,track
+QZFX1100249,electronic,house,1.000000000,artist
+QZFX1100250,electronic,house,1.000000000,artist
+QZFX1100251,electronic,house,1.000000000,track
+QZFX1100252,electronic,house,1.000000000,artist
+QZFX1100253,electronic,house,1.000000000,artist
+QZFX1100254,electronic,house,1.000000000,artist
+QZFX1100300,electronic,techno,1.000000000,track
+QZFX1100301,electronic,techno,1.000000000,artist
+QZFX1100302,electronic,techno,1.000000000,artist
+QZFX1100303,electronic,techno,1.000000000,artist
+QZFX1100304,electronic,techno,1.000000000,artist
+QZFX1100305,electronic,techno,1.000000000,track
+QZFX1100306,electronic,techno,1.000000000,track
+QZFX1200015,rock,indie rock,1.000000000,artist
+QZFX1200016,rock,indie rock,1.000000000,track
+QZFX1200017,rock,indie rock,1.000000000,artist
+QZFX1200018,rock,indie rock,1.000000000,artist
+QZFX1200155,hip hop,hip hop,1.000000000,track
+QZFX1200156,hip hop,hip hop,1.000000000,track
+QZFX1200157,hip hop,hip hop,1.000000000,artist
+QZFX1200158,hip hop,hip hop,1.000000000,artist
+QZFX1200159,hip hop,hip hop,1.000000000,artist
+QZFX1200320,pop,v-pop,1.000000000,track
+QZFX1200321,pop,v-pop,1.000000000,track
+QZFX1200322,pop,v-pop,1.000000000,track
+QZFX1200323,pop,v-pop,1.000000000,track
+QZFX1200324,pop,v-pop,1.000000000,track
+QZFX1300059,electronic,electro house,1.000000000,artist
+QZFX1300060,electronic,electro house,1.000000000,track
+QZFX1300061,electronic,electro house,1.000000000,track
+QZFX1300062,electronic,electro house,1.000000000,track
+QZFX1300063,electronic,electro house,1.000000000,track
+QZFX1300426,electronic,ambient,1.000000000,artist
+QZFX1300427,electronic,ambient,1.000000000,track
+QZFX1300428,electronic,ambient,1.000000000,track
+QZFX1300429,electronic,ambient,1.000000000,artist
+QZFX1300488,electronic,dubstep,1.000000000,track
+QZFX1300489,electronic,dubstep,1.000000000,track
+QZFX1300490,electronic,dubstep,1.000000000,track
+QZFX1300491,electronic,dubstep,1.000000000,track
+QZFX1300492,electronic,dubstep,1.000000000,artist
+QZFX1400289,electronic,techno,1.000000000,artist
+QZFX1400290,electronic,techno,1.000000000,artist
+QZFX1400291,electronic,techno,1.000000000,artist
+QZFX1400292,electronic,techno,1.000000000,track
+QZFX1400293,electronic,techno,1.000000000,track
+QZFX1400339,pop,v-pop,1.000000000,artist
+QZFX1400340,pop,v-pop,1.000000000,track
+QZFX1400341,pop,v-pop,1.000000000,track
+QZFX1400342,pop,v-pop,1.000000000,artist
+QZFX1400343,pop,v-pop,1.000000000,track
+QZFX1400344,pop,v-pop,1.000000000,artist
+QZFX1400345,pop,v-pop,1.000000000,artist
+QZFX1400454,pop,v-pop,1.000000000,track
+QZFX1400455,pop,v-pop,1.000000000,artist
+QZFX1400456,pop,v-pop,1.000000000,track
+QZFX1400457,pop,v-pop,1.000000000,artist
+QZFX1400458,pop,v-pop,1.000000000,track
+QZFX1400459,pop,v-pop,1.000000000,artist
+QZFX1500071,electronic,electro house,1.000000000,artist
+QZFX1500072,electronic,electro house,1.000000000,artist
+QZFX1500073,electronic,electro house,1.000000000,artist
+QZFX1500074,electronic,electro house,1.000000000,track
+QZFX1500075,electronic,electro house,1.000000000,artist
+QZFX1500076,electronic,electro house,1.000000000,artist
+QZFX1500077,electronic,electro house,1.000000000,artist
+QZFX1500078,electronic,electro house,1.000000000,track
+QZFX1500123,electronic,dubstep,1.000000000,artist
+QZFX1500124,electronic,dubstep,1.000000000,artist
+QZFX1500125,electronic,dubstep,1.000000000,track
+QZFX1500126,electronic,dubstep,1.000000000,track
+QZFX1500127,electronic,dubstep,1.000000000,track
+QZFX1500128,electronic,dubstep,1.000000000,artist
+QZFX1500129,electronic,dubstep,1.000000000,track
+QZFX1500130,electronic,dubstep,1.000000000,artist
+QZFX1500276,electronic,techno,1.000000000,track
+QZFX1500277,electronic,techno,1.000000000,track
+QZFX1500278,electronic,techno,1.000000000,track
+QZFX1500279,electronic,techno,1.000000000,artist
+QZFX1500280,electronic,techno,1.000000000,artist
+QZFX1500281,electronic,techno,1.000000000,track
+QZFX1500282,electronic,techno,1.000000000,artist
+QZFX1500283,electronic,techno,1.000000000,track
+QZFX1500367,pop,j-pop,1.000000000,artist
+QZFX1500368,pop,j-pop,1.000000000,artist
+QZFX1500369,pop,j-pop,1.000000000,track
+QZFX1500370,pop,j-pop,1.000000000,track
+QZFX1500371,pop,j-pop,1.000000000,artist
+QZFX1500392,pop,j-pop,1.000000000,track
+QZFX1500393,pop,j-pop,1.000000000,track
+QZFX1500394,pop,j-pop,1.000000000,track
+QZFX1500395,pop,j-pop,1.000000000,track
+QZFX1500396,pop,j-pop,1.000000000,artist
+QZFX1500397,pop,j-pop,1.000000000,artist
+QZFX1500415,electronic,ambient,1.000000000,track
+QZFX1500416,electronic,ambient,1.000000000,artist
+QZFX1500417,electronic,ambient,1.000000000,artist
+QZFX1500418,electronic,ambient,1.000000000,track
+QZFX1500419,electronic,ambient,1.000000000,artist
+QZFX1500420,electronic,ambient,1.000000000,track
+QZFX1500421,electronic,ambient,1.000000000,track
+QZFX1500500,electronic,ambient,1.000000000,track
+QZFX1600139,electronic,dubstep,1.000000000,track
+QZFX1600140,electronic,dubstep,1.000000000,track
+QZFX1600141,electronic,dubstep,1.000000000,track
+QZFX1600142,electronic,dubstep,1.000000000,artist
+QZFX1600143,electronic,dubstep,1.000000000,artist
+QZFX1600261,electronic,house,1.000000000,track
+QZFX1600262,electronic,house,1.000000000,track
+QZFX1600263,electronic,house,1.000000000,artist
+QZFX1600264,electronic,house,1.000000000,track
+QZFX1600265,electronic,house,1.000000000,artist
+QZFX1600266,electronic,house,1.000000000,track
+QZFX1600267,electronic,house,1.000000000,track
+QZFX1600268,electronic,house,1.000000000,track
+QZFX1600307,electronic,techno,1.000000000,track
+QZFX1600308,electronic,techno,1.000000000,artist
+QZFX1600309,electronic,techno,1.000000000,track
+QZFX1600310,electronic,techno,1.000000000,track
+QZFX1600311,electronic,techno,1.000000000,track
+QZFX1600312,electronic,techno,1.000000000,track
+QZFX1600313,electronic,techno,1.000000000,artist
+QZFX1600314,electronic,techno,1.000000000,artist
+QZFX1600315,electronic,techno,1.000000000,track
+QZFX1600316,electronic,techno,1.000000000,artist
+QZFX1600317,electronic,techno,1.000000000,track
+QZFX1600318,electronic,techno,1.000000000,track
+QZFX1600319,electronic,techno,1.000000000,artist
+QZFX1600372,pop,j-pop,1.000000000,track
+QZFX1600373,pop,j-pop,1.000000000,artist
+QZFX1600374,pop,j-pop,1.000000000,track
+QZFX1600375,pop,j-pop,1.000000000,artist
+QZFX1600376,pop,j-pop,1.000000000,track
+QZFX1600377,pop,j-pop,1.000000000,track
+QZFX1600378,pop,j-pop,1.000000000,track
+QZFX1600464,pop,k-pop,1.000000000,track
+QZFX1600465,pop,k-pop,1.000000000,artist
+QZFX1600466,pop,k-pop,1.000000000,artist
+QZFX1600467,pop,k-pop,1.000000000,track
+QZFX1600468,pop,k-pop,1.000000000,track
+QZFX1700079,electronic,electro house,1.000000000,track
+QZFX1700080,electronic,electro house,1.000000000,track
+QZFX1700081,electronic,electro house,1.000000000,track
+QZFX1700082,electronic,electro house,1.000000000,track
+QZFX1700083,electronic,electro house,1.000000000,track
+QZFX1700084,electronic,electro house,1.000000000,track
+QZFX1700085,electronic,electro house,1.000000000,artist
+QZFX1700086,electronic,electro house,1.000000000,track
+QZFX1700087,electronic,electro house,1.000000000,artist
+QZFX1700116,electronic,dubstep,1.000000000,track
+QZFX1700117,electronic,dubstep,1.000000000,track
+QZFX1700118,electronic,dubstep,1.000000000,track
+QZFX1700119,electronic,dubstep,1.000000000,track
+QZFX1700120,electronic,dubstep,1.000000000,artist
+QZFX1700121,electronic,dubstep,1.000000000,track
+QZFX1700122,electronic,dubstep,1.000000000,artist
+QZFX1700187,pop,k-pop,1.000000000,track
+QZFX1700188,pop,k-pop,1.000000000,track
+QZFX1700189,pop,k-pop,1.000000000,track
+QZFX1700190,pop,k-pop,1.000000000,track
+QZFX1700191,pop,k-pop,1.000000000,artist
+QZFX1700192,pop,k-pop,1.000000000,track
+QZFX1800044,electronic,electro house,1.000000000,track
+QZFX1800045,electronic,electro house,1.000000000,track
+QZFX1800046,electronic,electro house,1.000000000,track
+QZFX1800047,electronic,electro house,1.000000000,artist
+QZFX1800048,electronic,electro house,1.000000000,track
+QZFX1800049,electronic,electro house,1.000000000,track
+QZFX1800353,pop,v-pop,1.000000000,artist
+QZFX1800354,pop,v-pop,1.000000000,artist
+QZFX1800355,pop,v-pop,1.000000000,artist
+QZFX1800356,pop,v-pop,1.000000000,artist
+QZFX1800357,pop,v-pop,1.000000000,track
+QZFX1800358,pop,v-pop,1.000000000,artist
+QZFX1800430,electronic,ambient,1.000000000,track
+QZFX1800431,electronic,ambient,1.000000000,artist
+QZFX1800432,electronic,ambient,1.000000000,track
+QZFX1800433,electronic,ambient,1.000000000,artist
+QZFX1800434,electronic,ambient,1.000000000,track
+QZFX1800435,electronic,ambient,1.000000000,artist
+QZFX1800436,electronic,ambient,1.000000000,track
+QZFX1900007,rock,indie rock,1.000000000,track
+QZFX1900008,rock,indie rock,1.000000000,artist
+QZFX1900009,rock,indie rock,1.000000000,track
+QZFX1900010,rock,indie rock,1.000000000,artist
+QZFX1900011,rock,indie rock,1.000000000,artist
+QZFX1900012,rock,indie rock,1.000000000,artist
+QZFX1900013,rock,indie rock,1.000000000,artist
+QZFX1900014,rock,indie rock,1.000000000,artist
+QZFX1900160,hip hop,hip hop,1.000000000,track
+QZFX1900161,hip hop,hip hop,1.000000000,artist
+QZFX1900162,hip hop,hip hop,1.000000000,track
+QZFX1900163,hip hop,hip hop,1.000000000,track
+QZFX1900332,pop,v-pop,1.000000000,artist
+QZFX1900333,pop,v-pop,1.000000000,track
+QZFX1900334,pop,v-pop,1.000000000,artist
+QZFX1900335,pop,v-pop,1.000000000,track
+QZFX1900336,pop,v-pop,1.000000000,artist
+QZFX1900337,pop,v-pop,1.000000000,track
+QZFX1900338,pop,v-pop,1.000000000,track
+QZFX1900406,pop,j-pop,1.000000000,track
+QZFX1900407,pop,j-pop,1.000000000,track
+QZFX1900408,pop,j-pop,1.000000000,track
+QZFX1900409,pop,j-pop,1.000000000,track
+QZFX1900410,pop,j-pop,1.000000000,track
+QZFX1900493,electronic,house,1.000000000,track
+QZFX1900494,electronic,house,1.000000000,track
+QZFX1900495,electronic,house,1.000000000,track
+QZFX1900496,electronic,techno,1.000000000,track
+QZFX1900497,electronic,techno,1.000000000,track
+QZFX1900498,electronic,techno,1.000000000,track
+QZFX2000107,electronic,dubstep,1.000000000,track
+QZFX2000108,electronic,dubstep,1.000000000,track
+QZFX2000109,electronic,dubstep,1.000000000,track
+QZFX2000110,electronic,dubstep,1.000000000,artist
+QZFX2000111,electronic,dubstep,1.000000000,artist
+QZFX2000112,electronic,dubstep,1.000000000,track
+QZFX2000113,electronic,dubstep,1.000000000,track
+QZFX2000114,electronic,dubstep,1.000000000,track
+QZFX2000115,electronic,dubstep,1.000000000,artist
+QZFX2000200,pop,k-pop,1.000000000,track
+QZFX2000201,pop,k-pop,1.000000000,track
+QZFX2000202,pop,k-pop,1.000000000,track
+QZFX2000203,pop,k-pop,1.000000000,artist
+QZFX2000204,pop,k-pop,1.000000000,track
+QZFX2000205,pop,k-pop,1.000000000,track
+QZFX2000206,pop,k-pop,1.000000000,track
+QZFX2000411,electronic,ambient,1.000000000,track
+QZFX2000412,electronic,ambient,1.000000000,track
+QZFX2000413,electronic,ambient,1.000000000,track
+QZFX2000414,electronic,ambient,1.000000000,track
+QZFX2100168,hip hop,hip hop,1.000000000,track
+QZFX2100169,hip hop,hip hop,1.000000000,artist
+QZFX2100170,hip hop,hip hop,1.000000000,artist
+QZFX2100171,hip hop,hip hop,1.000000000,artist
+QZFX2100172,hip hop,hip hop,1.000000000,track
+QZFX2100173,hip hop,hip hop,1.000000000,artist
+QZFX2100180,pop,k-pop,1.000000000,track
+QZFX2100181,pop,k-pop,1.000000000,track
+QZFX2100182,pop,k-pop,1.000000000,track
+QZFX2100183,pop,k-pop,1.000000000,track
+QZFX2100184,pop,k-pop,1.000000000,track
+QZFX2100185,pop,k-pop,1.000000000,track
+QZFX2100186,pop,k-pop,1.000000000,track
+QZFX2100481,rock,indie rock,1.000000000,track
+QZFX2100499,electronic,house,1.000000000,artist
+QZFX2200027,rock,indie rock,1.000000000,artist
+QZFX2200028,rock,indie rock,1.000000000,track
+QZFX2200029,rock,indie rock,1.000000000,track
+QZFX2200030,rock,indie rock,1.000000000,track
+QZFX2200031,rock,indie rock,1.000000000,artist
+QZFX2200032,rock,indie rock,1.000000000,track
+QZFX2200207,pop,k-pop,1.000000000,artist
+QZFX2200208,pop,k-pop,1.000000000,artist
+QZFX2200209,pop,k-pop,1.000000000,track
+QZFX2200210,pop,k-pop,1.000000000,track
+QZFX2200211,pop,k-pop,1.000000000,artist
+QZFX2200212,pop,k-pop,1.000000000,track
+QZFX2200460,pop,j-pop,1.000000000,track
+QZFX2200461,pop,j-pop,1.000000000,track
+QZFX2200462,pop,j-pop,1.000000000,artist
+QZFX2200463,pop,j-pop,1.000000000,artist
+QZFX2300238,electronic,house,1.000000000,track
+QZFX2300239,electronic,house,1.000000000,track
+QZFX2300240,electronic,house,1.000000000,artist
+QZFX2300241,electronic,house,1.000000000,track
+QZFX2300242,electronic,house,1.000000000,artist
+QZFX2300243,electronic,house,1.000000000,track
+QZFX2300244,electronic,house,1.000000000,artist
+QZFX2300245,electronic,house,1.000000000,artist
+QZFX2300469,hip hop,hip hop,1.000000000,artist
+QZFX2300470,hip hop,hip hop,1.000000000,artist
+QZFX2300471,hip hop,hip hop,1.000000000,track
+QZFX2300472,hip hop,hip hop,1.000000000,artist
+QZFX2300473,hip hop,hip hop,1.000000000,track
+QZFX2300474,hip hop,hip hop,1.000000000,artist
+QZFX2400001,rock,indie rock,1.000000000,track
+QZFX2400002,rock,indie rock,1.000000000,track
+QZFX2400003,rock,indie rock,1.000000000,track
+QZFX2400004,rock,indie rock,1.000000000,track
+QZFX2400005,rock,indie rock,1.000000000,artist
+QZFX2400006,rock,indie rock,1.000000000,track
+QZFX2400033,rock,indie rock,1.000000000,artist
+QZFX2400034,rock,indie rock,1.000000000,artist
+QZFX2400035,rock,indie rock,1.000000000,track
+QZFX2400036,rock,indie rock,1.000000000,artist
+QZFX2400037,rock,indie rock,1.000000000,artist
+QZFX2400038,rock,indie rock,1.000000000,track
+QZFX2400193,pop,k-pop,1.000000000,track
+QZFX2400194,pop,k-pop,1.000000000,track
+QZFX2400195,pop,k-pop,1.000000000,artist
+QZFX2400196,pop,k-pop,1.000000000,track
+QZFX2400197,pop,k-pop,1.000000000,artist
+QZFX2400198,pop,k-pop,1.000000000,artist
+QZFX2400199,pop,k-pop,1.000000000,artist
+QZFX2400225,electronic,house,1.000000000,track
+QZFX2400226,electronic,house,1.000000000,track
+QZFX2400227,electronic,house,1.000000000,track
+QZFX2400228,electronic,house,1.000000000,track
+QZFX2400229,electronic,house,1.000000000,track
+QZFX2500359,pop,v-pop,1.000000000,track
+QZFX2500360,pop,v-pop,1.000000000,track
+QZFX2500361,pop,v-pop,1.000000000,artist
+QZFX2500362,pop,v-pop,1.000000000,track
+QZFX2500363,pop,v-pop,1.000000000,artist
+QZFX2500364,pop,v-pop,1.000000000,track
+QZFX2500365,pop,v-pop,1.000000000,track
+QZFX2500366,pop,v-pop,1.000000000,track
+QZFX2500398,pop,j-pop,1.000000000,track
+QZFX2500399,pop,j-pop,1.000000000,track
+QZFX2500400,pop,j-pop,1.000000000,artist
+QZFX2500401,pop,j-pop,1.000000000,track
+QZFX2500402,pop,j-pop,1.000000000,track
+QZFX2500403,pop,j-pop,1.000000000,track
+QZFX2500404,pop,j-pop,1.000000000,artist
+QZFX2500405,pop,j-pop,1.000000000,track

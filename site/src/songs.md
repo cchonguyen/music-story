@@ -164,3 +164,28 @@ ageMode === "Absolute Plays"
       ]
     })
 ```
+
+```js
+const totalFilteredAgePlays = d3.sum(filteredAge, (d) => d.plays);
+const songAgeSummaryTable = d3.rollups(
+  filteredAge,
+  (v) => {
+    const plays = d3.sum(v, (d) => d.plays);
+    const peak = d3.greatest(v, (d) => d.plays);
+    return {
+      plays,
+      share_of_plays: `${((plays / (totalFilteredAgePlays || 1)) * 100).toFixed(1)}%`,
+      peak_year: peak ? peak.year : null,
+      peak_year_plays: peak ? peak.plays : 0
+    };
+  },
+  (d) => d.age_bucket
+).map(([age_bucket, s]) => ({age_bucket, ...s}));
+```
+
+```js
+Inputs.table(songAgeSummaryTable, {
+  format: {peak_year: (d) => (d == null ? "—" : String(d))},
+  rows: 8
+})
+```

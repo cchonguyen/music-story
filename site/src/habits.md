@@ -36,6 +36,28 @@ Plot.plot({
 })
 ```
 
+```js
+const habitDayRows = d3.rollups(
+  cells,
+  (v) => {
+    const plays = d3.sum(v, (d) => d.plays);
+    const peak = d3.greatest(v, (d) => d.plays);
+    return {
+      plays,
+      peak_hour: peak ? `${String(peak.hour).padStart(2, "0")}:00` : "—",
+      peak_hour_plays: peak ? peak.plays : 0
+    };
+  },
+  (d) => d.weekday
+)
+  .sort((a, b) => a[0] - b[0])
+  .map(([w, s]) => ({weekday: days[w - 1], ...s}));
+```
+
+```js
+Inputs.table(habitDayRows, {rows: 7})
+```
+
 <!-- story: weekly rhythm -->
 
 ## Sessions per year & Gap Threshold Sensitivity (10m vs. 20m vs. 30m)
@@ -91,6 +113,23 @@ Plot.plot({
     Plot.ruleY([0])
   ]
 })
+```
+
+```js
+Inputs.table(
+  sessions
+    .slice()
+    .sort((a, b) => b.year - a.year)
+    .map((d) => ({
+      year: d.year,
+      sessions_10m: d.sessions_10,
+      sessions_20m: d.sessions,
+      sessions_30m: d.sessions_30,
+      median_min: Math.round(d.median_minutes * 10) / 10,
+      p90_min: Math.round(d.p90_minutes * 10) / 10
+    })),
+  {format: {year: String}, rows: 10}
+)
 ```
 
 ## Intentionality vs. Algorithmic Autopilot & The Skip Survival Curve
@@ -153,6 +192,25 @@ intentLens.startsWith("Intentionality")
     })
 ```
 
+```js
+Inputs.table(
+  intentSkip
+    .slice()
+    .sort((a, b) => b.year - a.year || b.plays - a.plays)
+    .map((d) => ({
+      year: d.year,
+      intent_mode: d.intent_mode,
+      plays: d.plays,
+      skips: d.skips,
+      skip_0_5s: d.skip_under_5s,
+      skip_5_15s: d.skip_5_to_15s,
+      skip_15_30s: d.skip_15_to_30s,
+      avg_completion: `${(d.avg_completion * 100).toFixed(1)}%`
+    })),
+  {format: {year: String}, rows: 10}
+)
+```
+
 ## Circadian BPM Heartbeat & Session Energy Arc
 
 Using octave-corrected Deezer `bpm` (`bpm > 175` halved to correct beat-detector double-time outliers) and audio `gain` from `enr_deezer_track`, trace how your average musical tempo and interquartile range (`P25–P75`) shift across the 24-hour clock or across track depth within a session (`Opener #1` to `Track #15+`).
@@ -193,6 +251,20 @@ Plot.plot({
 })
 ```
 
+```js
+Inputs.table(
+  tempoRows.map((d) => ({
+    bucket: activeTempoType === "hour" ? `${String(d.bucket).padStart(2, "0")}:00` : String(d.bucket),
+    plays: d.plays,
+    avg_bpm: d.avg_bpm,
+    p25_bpm: d.p25_bpm,
+    p75_bpm: d.p75_bpm,
+    avg_gain_db: d.avg_gain
+  })),
+  {rows: 10}
+)
+```
+
 ## Skip rate
 
 Skips as a share of skips plus Spotify plays, from 2012 on.
@@ -205,6 +277,21 @@ Plot.plot({
 })
 ```
 
+```js
+Inputs.table(
+  skip
+    .slice()
+    .sort((a, b) => b.year - a.year)
+    .map((d) => ({
+      year: d.year,
+      spotify_plays: d.plays,
+      skips: d.skips,
+      skip_rate: `${(d.skip_rate * 100).toFixed(1)}%`
+    })),
+  {format: {year: String}, rows: 10}
+)
+```
+
 ## Platform share
 
 ```js
@@ -214,4 +301,23 @@ Plot.plot({
   color: {legend: true},
   marks: [Plot.barY(platform, Plot.normalizeY("sum", {x: "year", y: "plays", fill: "platform_family", tip: true})), Plot.ruleY([0])]
 })
+```
+
+```js
+const platformTableRows = d3.rollups(
+  platform,
+  (v) => ({
+    plays: d3.sum(v, (d) => d.plays),
+    active_years: v.length,
+    first_year: d3.min(v, (d) => d.year),
+    last_year: d3.max(v, (d) => d.year)
+  }),
+  (d) => d.platform_family
+)
+  .map(([platform_family, s]) => ({platform_family, ...s}))
+  .sort((a, b) => b.plays - a.plays);
+```
+
+```js
+Inputs.table(platformTableRows, {format: {first_year: String, last_year: String}, rows: 8})
 ```

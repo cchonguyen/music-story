@@ -72,13 +72,26 @@ America/Vancouver.
 | 03 | W3 | Parse the HTTP cache into `enr_*` tables (no network) |
 | 04 | W7 | Dimensions: `track_uri_map`, `track_key_map`, `dim_track`, `dim_artist`, `dim_album`, `bridge_track_artist` |
 | 05 | W8 | Sessions (20 min gap), country imputation, plays and skips |
-| 06 | W9 | Genre map (222 rows) and `track_genre` |
-| 07 | W5/W6 | Marts (`sql/marts/*.sql` in name order) |
+| 06 | W9 / W9b | Genre map (222 rows, 5 columns with `is_umbrella`) and parameterised two-tier `track_genre` builder |
+| 07 | W5/W6/W9c | Marts (`sql/marts/*.sql` in name order, including `mart_genre_xray`, `mart_genre_hierarchy`, `mart_genre_clock`) |
+
+### Genre umbrella disaggregation & sensitivity benchmark (`W9b`)
+
+`data/genre_map.csv` carries 5 columns (`source_tag,style,parent_genre,is_genre,is_umbrella`). All 20 broad umbrella tags (`electronic`, `electronica`, `edm`, `electro`, `dance`, `rock`, `alternative`, `indie`, `pop`, `hip hop`, `rap`, `r&b`, `jazz`, `classical`, `folk`, `metal`, `country`, `latin`, `world`, `soundtrack`) map to `style == parent_genre` with `is_umbrella = true` (Option A consolidation). In `pipeline/genre.py`, umbrella mass at the dominant tag level is disaggregated into co-occurring specific sibling styles under the same `parent_genre` using a continuous linear ramp $\alpha(\rho_P) = \operatorname{clamp}((\rho_P - 0.10) / (0.30 - 0.10), 0, 1)$, followed by a two-stage soft-hinge pruning curve $g(x; 0.10, 0.20) = x \cdot \operatorname{clamp}((x - 0.10) / (0.20 - 0.10), 0, 1)$ at the parent level (Stage A) and intra-parent style level (Stage B).
+
+50-track synthetic benchmark (`uv run python -m pipeline.genre sensitivity`):
+
+| Rule Profile | `specific_style_share` | `max_cliff_jump` ($\|\Delta w\|$ per $0.01\ \Delta\rho$) | `mean_styles_per_track` | Notes |
+| --- | --- | --- | --- | --- |
+| `legacy_step_15` (`rho=0.15`, `floor=0.15`, single-stage) | `1.0000` (nominal; `0.5595` true micro-style share once `edm`/`indie` umbrellas are separated) | `1.7200` | `2.720` | Preserved for Concert Tracker `artist_genre.py` (`VERSION = 1`) and `test_legacy_step_15_matches_head_fixture_rounded_9dp` |
+| `hard_step_25` (`rho=0.25`, `floor=0.25`, two-stage) | `0.7200` | `1.5200` | `2.100` | Hard step discontinuity at $\rho_P = 0.25$ and $s = 0.25$ |
+| `ramp_soft_hinge` (`rho=[0.10, 0.30]`, `floor=[0.10, 0.20]`, two-stage, **default**) | `0.7918` | `0.2000` | `2.800` | Zero step discontinuities; retains $79.18\%$ specific micro-style weight across the 50-track benchmark |
 
 After a build, `uv run python -m pipeline.artist_genre export` writes `build/artist_genres.json`
 for Concert Tracker (concert.charliechonguyen.com): every artist with a genre (name, MBID, styles
 with weights summing to 1, which tag sources fed it) plus the `is_genre` rows of the genre map.
-Artist level only, from the same inputs and 15% rule as `track_genre`'s artist level. No schema
+Artist level only, intentionally kept on the legacy `MIN_SHARE = 0.15` hard floor so Concert Tracker's
+`music-story/artist-genres` v1 contract is unchanged. No schema
 change; the file is computed on demand and stays in `build/`. Charlie uploads it in Concert
 Tracker's Table tab, which keeps only acts seen live and uses the genre map to read MusicBrainz
 genres for acts this file does not cover.
@@ -213,6 +226,8 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-29 | Explorer privacy gate: incognito plays and skips are left out, and time is only `day`, `hour` and ISO `weekday` (no timestamps) | The plan's W12 gate, applied to the one row-level export so there is a single data path; the explorer's year, month and first or last play use only `day` |
 | 2026-10-27 | Explorer rows include skips, flagged `is_skip` | Skip rate per artist or track needs them; counts and hours leave them out so they match the marts |
 | 2026-10-30 | Non-destructive data preservation invariant | Raw listening telemetry is never destructively overwritten or pruned; all recalculations, merges, and enrichments must be additive or non-destructive views/marts |
+| 2026-10-31 | W9b two-tier `is_umbrella` consolidation (Option A), continuous ramp $\alpha(\rho_P)$ on $[0.10, 0.30]$, and two-stage soft-hinge floor $g(x; 0.10, 0.20)$; `pipeline/artist_genre.py` kept on `MIN_SHARE = 0.15` | Collapses all 20 umbrella tags (`edm`, `electronica`, `indie`, `alternative`, `rap`, parent self-tags) to `style == parent_genre` (`is_umbrella = true`) so co-occurring specific styles (`house`, `synthpop`, `shoegaze`, `boom bap`) receive umbrella mass without hard step discontinuities (`max_cliff_jump` drops from `1.72` to `0.20`), while keeping Concert Tracker's `music-story/artist-genres` v1 contract untouched |
+| 2026-10-31 | W9c `mart_genre_xray` keyed on 4-tuple `(artist_norm, title_norm, parent_genre, style)` and joined in DuckDB-Wasm | Keeps `sql/marts/40_explorer.sql` untouched (`EXPLORER_COLS` remains 15 columns) while guaranteeing a 1:1 `LEFT JOIN` in `explorer.md` even when distinct `track_id`s share `(artist_norm, title_norm)` |
 
 ## 8. Open items
 
