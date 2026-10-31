@@ -172,7 +172,7 @@ def test_noise_share_under_soft_floor_is_dropped(fixture_db_path):
 def test_pre_prune_conservation_and_post_prune_disaggregation_invariance(fixture_db_path):
     c = fresh_db()
     load_fx(c, fixture_db_path, INPUTS)
-    tid, a_norm, full_norm = c.execute(
+    _tid, a_norm, full_norm = c.execute(
         "SELECT t.track_id, t.artist_norm, t.full_norm FROM dim_track t LIMIT 1"
     ).fetchone()
     c.execute("DELETE FROM enr_lastfm_tags WHERE entity_key = ? OR entity_key = ?", [a_norm, f"{a_norm}::{full_norm}"])
@@ -197,5 +197,5 @@ def test_pre_prune_conservation_and_post_prune_disaggregation_invariance(fixture
         c.execute("SELECT parent_genre, sum(weight) FROM track_genre GROUP BY 1 ORDER BY 1").fetchall()
     )
     assert set(no_disagg) == set(with_disagg)
-    for pg in no_disagg:
-        assert abs(no_disagg[pg] - with_disagg[pg]) < 1e-9
+    for pg, weight in no_disagg.items():
+        assert abs(weight - with_disagg[pg]) < 1e-9

@@ -40,7 +40,7 @@ def _seed_single_track(con, tags: list[tuple[str, str, int]]) -> str:
 )
 def test_ramp_vs_legacy_step_across_rho(rho: float, expected_deep_house_legacy: float, expected_deep_house_ramp: float):
     con = fresh_db()
-    spec_cnt = int(round(rho * 1000))
+    spec_cnt = round(rho * 1000)
     umb_cnt = 1000 - spec_cnt
     tags = [("track", "electronic", umb_cnt), ("track", "edm", 0)]
     if spec_cnt > 0:
@@ -80,14 +80,14 @@ def test_ramp_vs_legacy_step_across_rho(rho: float, expected_deep_house_legacy: 
 )
 def test_soft_hinge_parent_and_stage_b_rollup(share: float, expected_g: float):
     con = fresh_db()
-    pop_cnt = int(round(share * 1000))
+    pop_cnt = round(share * 1000)
     elec_cnt = 1000 - pop_cnt
     # Split electronic across house (60%) and techno (40%), and give pop 'synthpop'
     tid = _seed_single_track(
         con,
         [
-            ("track", "house", int(round(elec_cnt * 0.60))),
-            ("track", "techno", elec_cnt - int(round(elec_cnt * 0.60))),
+            ("track", "house", round(elec_cnt * 0.60)),
+            ("track", "techno", elec_cnt - round(elec_cnt * 0.60)),
             ("track", "synthpop", pop_cnt),
         ],
     )
@@ -118,9 +118,9 @@ def test_50track_sensitivity_benchmark():
         tracks.append((tid, tid, f"Song {i}", "bench act", f"song {i}", f"song {i}", None, False, key, 1, 1, 200000, "spotify", 2020, 2020, False, 100))
         rho = (i % 25) / 25.0  # spans 0.00 to 0.96
         s_second = 0.02 + (i // 25) * 0.14 + (i % 10) * 0.03  # spans 0.02 to 0.43
-        elec_total = int(round((1.0 - s_second) * 1000))
-        rock_total = int(round(s_second * 1000))
-        spec_elec = int(round(elec_total * rho))
+        elec_total = round((1.0 - s_second) * 1000)
+        rock_total = round(s_second * 1000)
+        spec_elec = round(elec_total * rho)
         umb_elec = elec_total - spec_elec
         if umb_elec > 0:
             tags.append(("track", key, "electronic", umb_elec // 2 + 1))

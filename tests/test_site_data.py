@@ -86,6 +86,7 @@ def test_cli_writes_parquet(fixture_db_path, tmp_path):
 
 def test_parquet_bytes_size_guard(fixture_db_path):
     import pytest
+
     from pipeline.site_data import MAX_PARQUET_BYTES
 
     data = parquet_bytes("explorer_plays")
@@ -98,7 +99,7 @@ def test_generate_fixture_marts_rng_parity(tmp_path):
     """Verify that scripts/generate_fixture_marts.py consumes the exact same Gen(SEED=20260422)
     RNG stream as scripts/make_fixtures.py and produces matching mart_genre_xray 4-tuple keys."""
     from scripts import generate_fixture_marts
-    from scripts.make_fixtures import GENRE_BPM, ZZ_BLOCK, Gen, timedelta
+    from scripts.make_fixtures import GENRE_BPM, ZZ_BLOCK, Gen
 
     g1 = Gen()
     g1.build_catalog()
