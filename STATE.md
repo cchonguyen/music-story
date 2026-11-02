@@ -25,6 +25,7 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W9d 10-parent consolidation + Gemini 3.6 Flash enrichment | Antigravity | done (main); 10 parents (`metal` $\to$ `rock`, `folk` $\to$ `country`, `latin` $\to$ `world`), 357-row `genre_map.csv`, `enr_artist_genre_llm` table (700 artists classified), volume-ranked `genres.md`, 98.73% play coverage |
 | W9e Discogs CC0 dump integration & Wikidata ID bridge | Antigravity | done (main); `pipeline/enrich_wikidata.py` (3,807 artists mapped), `pipeline/enrich_discogs.py` (137k release masters scanned, 3,508 catalog artists enriched), `enr_discogs_artist` table, Electronic sub-style resolution reaches 91.4%, Rock 93.0%, Pop 79.1% |
 | W9f Domain-specific vendor reliability matrix `pipeline/genre.py` | Antigravity | done (main); intra-vendor unit normalization per (track, level, source), domain reliability multipliers (Discogs 1.25x electronic/rock/jazz, MB 1.25x classical/soundtrack, Last.fm 1.15x pop/world/hip hop), 298/298 tests green |
+| W9g Full catalog Gemini 3.6 Flash synthesis | Antigravity | done (main); 7,932 artists enriched (100% of played catalog), 291 batches in parallel, 110,915 `track_genre` rows, 99.83% of plays classified, 4-vendor consensus covers 70.83% of plays and >= 2 vendors covers 98.26% of plays |
 
 Next:
 1. Fetch 2026-10-23: Last.fm done. Spotify locked out after ~600 req (until Fri 23 Oct 14:44 PT).
