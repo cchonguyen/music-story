@@ -77,7 +77,7 @@ power pop,power pop,pop,true,false
 hip hop,hip hop,hip hop,true,true
 rap,rap,hip hop,true,true
 trap,trap,hip hop,true,false
-hip-hop,hip-hop,hip hop,true,false
+hip-hop,hip hop,hip hop,true,true
 gangsta rap,gangsta rap,hip hop,true,false
 underground hip hop,underground hip hop,hip hop,true,false
 boom bap,boom bap,hip hop,true,false
@@ -88,7 +88,7 @@ west coast rap,west coast rap,hip hop,true,false
 southern hip hop,southern hip hop,hip hop,true,false
 grime,grime,hip hop,true,false
 r&b,r&b,r&b,true,true
-rnb,rnb,r&b,true,false
+rnb,r&b,r&b,true,true
 soul,soul,r&b,true,false
 neo-soul,neo-soul,r&b,true,false
 funk,funk,r&b,true,false
@@ -106,44 +106,44 @@ blues,blues,jazz,true,false
 classical,classical,classical,true,true
 baroque,baroque,classical,true,false
 opera,opera,classical,true,false
-piano,piano,classical,true,false
+piano,,,false,false
 orchestral,orchestral,classical,true,false
 contemporary classical,contemporary classical,classical,true,false
 neoclassical,neoclassical,classical,true,false
-instrumental,instrumental,classical,true,false
-folk,folk,folk,true,true
-singer-songwriter,singer-songwriter,folk,true,false
-indie folk,indie folk,folk,true,false
-acoustic,acoustic,folk,true,false
-americana,americana,folk,true,false
-bluegrass,bluegrass,folk,true,false
-metal,metal,metal,true,true
-heavy metal,heavy metal,metal,true,false
-death metal,death metal,metal,true,false
-black metal,black metal,metal,true,false
-thrash metal,thrash metal,metal,true,false
-metalcore,metalcore,metal,true,false
-doom metal,doom metal,metal,true,false
-power metal,power metal,metal,true,false
-nu metal,nu metal,metal,true,false
-progressive metal,progressive metal,metal,true,false
-hardcore,hardcore,metal,true,false
+instrumental,,,false,false
+folk,folk,country,true,false
+singer-songwriter,singer-songwriter,country,true,false
+indie folk,indie folk,country,true,false
+acoustic,,,false,false
+americana,americana,country,true,false
+bluegrass,bluegrass,country,true,false
+metal,metal,rock,true,false
+heavy metal,heavy metal,rock,true,false
+death metal,death metal,rock,true,false
+black metal,black metal,rock,true,false
+thrash metal,thrash metal,rock,true,false
+metalcore,metalcore,rock,true,false
+doom metal,doom metal,rock,true,false
+power metal,power metal,rock,true,false
+nu metal,nu metal,rock,true,false
+progressive metal,progressive metal,rock,true,false
+hardcore,hardcore,rock,true,false
 punk,punk,rock,true,false
 pop punk,pop punk,rock,true,false
 country,country,country,true,true
 country pop,country pop,country,true,false
 alt-country,alt-country,country,true,false
 outlaw country,outlaw country,country,true,false
-latin,latin,latin,true,true
-reggaeton,reggaeton,latin,true,false
-salsa,salsa,latin,true,false
-bachata,bachata,latin,true,false
-bossa nova,bossa nova,latin,true,false
-latin pop,latin pop,latin,true,false
-cumbia,cumbia,latin,true,false
-latin trap,latin trap,latin,true,false
-samba,samba,latin,true,false
-merengue,merengue,latin,true,false
+latin,latin,world,true,false
+reggaeton,reggaeton,world,true,false
+salsa,salsa,world,true,false
+bachata,bachata,world,true,false
+bossa nova,bossa nova,world,true,false
+latin pop,latin pop,world,true,false
+cumbia,cumbia,world,true,false
+latin trap,latin trap,world,true,false
+samba,samba,world,true,false
+merengue,merengue,world,true,false
 world,world,world,true,true
 reggae,reggae,world,true,false
 afrobeat,afrobeat,world,true,false
@@ -159,7 +159,7 @@ soundtrack,soundtrack,soundtrack,true,true
 score,score,soundtrack,true,false
 video game music,video game music,soundtrack,true,false
 anime,anime,soundtrack,true,false
-musical,musical,soundtrack,true,false
+musical,,,false,false
 ost,ost,soundtrack,true,false
 seen live,,,false,false
 favorites,,,false,false
@@ -221,3 +221,138 @@ awesome songs,,,false,false
 2000s,,,false,false
 80s,,,false,false
 90s,,,false,false
+dance-pop,dance pop,pop,true,false
+pop rock,pop rock,rock,true,false
+synth-pop,synthpop,pop,true,false
+kpop,k-pop,pop,true,false
+alternative pop,alt-pop,pop,true,false
+alt-pop,alt-pop,pop,true,false
+pop rap,pop rap,hip hop,true,false
+pop soul,soul,r&b,true,false
+nu disco,nu-disco,electronic,true,false
+nu-disco,nu-disco,electronic,true,false
+alternative r&b,alternative r&b,r&b,true,false
+alternative rnb,alternative r&b,r&b,true,false
+contemporary rnb,contemporary r&b,r&b,true,false
+folk pop,folk pop,country,true,false
+contemporary country,contemporary country,country,true,false
+tropical house,tropical house,electronic,true,false
+complextro,complextro,electronic,true,false
+indietronica,indietronica,electronic,true,false
+bubblegum pop,bubblegum pop,pop,true,false
+chamber pop,chamber pop,pop,true,false
+progressive trance,progressive trance,electronic,true,false
+bass house,bass house,electronic,true,false
+melodic house,melodic house,electronic,true,false
+melodic techno,melodic techno,electronic,true,false
+melodic dubstep,melodic dubstep,electronic,true,false
+melodic bass,melodic bass,electronic,true,false
+chillstep,chillstep,electronic,true,false
+chill house,chillout,electronic,true,false
+big room,big room,electronic,true,false
+big room house,big room,electronic,true,false
+future house,future house,electronic,true,false
+future rave,future rave,electronic,true,false
+french house,french house,electronic,true,false
+electroclash,electroclash,electronic,true,false
+neo soul,neo-soul,r&b,true,false
+powerpop,power pop,pop,true,false
+instrumental hip hop,instrumental hip hop,hip hop,true,false
+instrumental hip-hop,instrumental hip hop,hip hop,true,false
+lo-fi hip hop,lo-fi hip hop,hip hop,true,false
+eurodance,eurodance,electronic,true,false
+piano rock,piano rock,rock,true,false
+new jack swing,new jack swing,r&b,true,false
+emo pop,emo pop,rock,true,false
+uplifting trance,uplifting trance,electronic,true,false
+vocal trance,vocal trance,electronic,true,false
+post-hardcore,post-hardcore,rock,true,false
+funky house,funky house,electronic,true,false
+hip hop soul,hip hop soul,r&b,true,false
+trap soul,trap soul,r&b,true,false
+breaks,breakbeat,electronic,true,false
+crunkcore,crunkcore,rock,true,false
+trip hop,trip-hop,electronic,true,false
+chillhop,chillhop,hip hop,true,false
+korean pop,k-pop,pop,true,false
+jpop,j-pop,pop,true,false
+brostep,brostep,electronic,true,false
+hyperpop,hyperpop,pop,true,false
+funktronica,funktronica,electronic,true,false
+post-grunge,post-grunge,rock,true,false
+melodic trance,melodic trance,electronic,true,false
+electro-disco,disco,electronic,true,false
+hardcore hip hop,hardcore hip hop,hip hop,true,false
+trap edm,trap,electronic,true,false
+afro house,afro house,electronic,true,false
+electronic rock,electronic rock,rock,true,false
+synth funk,funk,r&b,true,false
+hip house,hip house,electronic,true,false
+organic house,organic house,electronic,true,false
+acoustic rock,acoustic rock,rock,true,false
+quiet storm,quiet storm,r&b,true,false
+screamo,screamo,rock,true,false
+glam pop,glam pop,pop,true,false
+disco house,disco house,electronic,true,false
+blue-eyed soul,blue-eyed soul,r&b,true,false
+boogie,boogie,r&b,true,false
+indie dance,indie dance,electronic,true,false
+french electro,electro,electronic,true,false
+neo-psychedelia,psychedelic rock,rock,true,false
+broadway,broadway,soundtrack,true,false
+musicals,broadway,soundtrack,true,false
+disney,disney,soundtrack,true,false
+girl group,,,false,false
+girl groups,,,false,false
+girlband,,,false,false
+boyband,,,false,false
+glee,,,false,false
+glee cast,,,false,false
+ballad,,,false,false
+diva,,,false,false
+favourite albums,,,false,false
+my top songs,,,false,false
+sweden,,,false,false
+canada,,,false,false
+united states,,,false,false
+dutch,,,false,false
+norwegian,,,false,false
+norway,,,false,false
+south korea,,,false,false
+germany,,,false,false
+california,,,false,false
+australia,,,false,false
+new york,,,false,false
+scottish,,,false,false
+danish,,,false,false
+england,,,false,false
+taylor swift,,,false,false
+lady gaga,,,false,false
+ariana grande,,,false,false
+rihanna,,,false,false
+katy perry,,,false,false
+britney spears,,,false,false
+kesha,,,false,false
+kelly clarkson,,,false,false
+snsd,,,false,false
+yg family,,,false,false
+girls generation,,,false,false
+daft punk,,,false,false
+club,,,false,false
+composer,,,false,false
+composers,,,false,false
+american idol,,,false,false
+x factor,,,false,false
+nickelodeon,,,false,false
+actress,,,false,false
+cute,,,false,false
+queer,,,false,false
+easy listening,,,false,false
+dj,,,false,false
+female,,,false,false
+beats,,,false,false
+lounge,,,false,false
+masterpiece,,,false,false
+vinyl,,,false,false
+christmas music,,,false,false
+aoty,,,false,false

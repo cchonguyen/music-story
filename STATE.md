@@ -22,6 +22,7 @@ Last gate: Gate 1 PASSED 95.81% (2026-10-22, after W2 rev 2; first run 89.57%).
 | W9c genre xray, hierarchy & clock marts `sql/marts/50_insights.sql` | Sonnet | done; `mart_genre_xray` (4-tuple key), `mart_genre_hierarchy`, `mart_genre_clock` (`started_at_local`), 20 MiB Parquet guard |
 | W10c genres page upgrade `site/src/genres.md` | Sonnet | done; Parent/Sub-Style hierarchy, local-time circadian heatmap, Song Genre X-Ray table |
 | W10d explorer subfilters + chapter tables `site/src/*.md` | Sonnet | done; DuckDB-Wasm `LEFT JOIN xray`, multi-facet subfilters, synchronized `Inputs.table` across all chapters |
+| W9d 10-parent consolidation + Gemini 3.6 Flash enrichment | Antigravity | done (main); 10 parents (`metal` $\to$ `rock`, `folk` $\to$ `country`, `latin` $\to$ `world`), 357-row `genre_map.csv`, `enr_artist_genre_llm` table (700 artists classified), volume-ranked `genres.md`, 98.73% play coverage |
 
 Next:
 1. Fetch 2026-10-23: Last.fm done. Spotify locked out after ~600 req (until Fri 23 Oct 14:44 PT).
