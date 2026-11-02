@@ -84,10 +84,21 @@ def _site_con(db: Path | None) -> duckdb.DuckDBPyConnection:
         has_plays = con.execute(
             "SELECT count(*) FROM information_schema.tables WHERE table_name = 'plays'"
         ).fetchone()[0] > 0
-        if (has_day and has_pulse and has_xray) or not has_plays:
+        has_genre_map = con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'genre_map'"
+        ).fetchone()[0] > 0
+        is_fresh_genre = True
+        if has_plays and has_genre_map:
+            db_parents = {r[0] for r in con.execute("SELECT DISTINCT parent_genre FROM genre_map WHERE is_genre").fetchall()}
+            from pipeline.genre import PARENTS
+            is_fresh_genre = db_parents.issubset(set(PARENTS)) and len(db_parents) == len(PARENTS)
+        if (has_day and has_pulse and has_xray and is_fresh_genre) or not has_plays:
             return con
         con.close()
         con_rw = duckdb.connect(str(db))
+        if has_plays and not is_fresh_genre:
+            from pipeline import genre
+            genre.run(con_rw)
         for f in sorted((config.SQL_DIR / "marts").glob("*.sql")):
             con_rw.execute(f.read_text())
         con_rw.close()

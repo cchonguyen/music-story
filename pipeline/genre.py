@@ -18,18 +18,15 @@ GENRE_MAP_CSV = config.REPO_ROOT / "data" / "genre_map.csv"
 MIN_SHARE = 0.15
 PARENTS: tuple[str, ...] = (
     "electronic",
-    "rock",
     "pop",
+    "rock",
     "hip hop",
     "r&b",
-    "jazz",
-    "classical",
-    "folk",
-    "metal",
     "country",
-    "latin",
-    "world",
     "soundtrack",
+    "classical",
+    "jazz",
+    "world",
 )
 
 PROFILES: dict[str, dict[str, float | bool]] = {
@@ -134,6 +131,12 @@ WITH lvl AS (
     SELECT t.track_id, 'artist', lower(trim(g.tag)), 100.0
     FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id
     JOIN enr_mb_artist m ON m.artist_mbid = d.artist_mbid, unnest(m.genres) g(tag)
+    UNION ALL
+    -- LLM-synthesised artist genres (Option 2). Gives 100.0 base weight per artist level.
+    SELECT t.track_id, 'artist', lower(trim(split_part(unnest(llm.genres), '::', 2))), unnest(llm.weights) * 100.0
+    FROM dim_track t
+    JOIN dim_artist d ON d.artist_id = t.primary_artist_id
+    JOIN enr_artist_genre_llm llm ON llm.artist_norm = d.artist_norm
 ),
 styled AS (
     SELECT l.track_id, l.level, m.parent_genre, {style_expr} AS style, sum(l.cnt) AS cnt

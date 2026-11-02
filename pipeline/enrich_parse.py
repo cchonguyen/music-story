@@ -223,9 +223,37 @@ def _deezer_matches(cache: Cache, by_id: dict[str, tuple[int, dict | None, str]]
     return out
 
 
+def _gemini_artist_genres(cache: Cache) -> list[tuple]:
+    out = []
+    # Reads every endpoint matching 'artist_genre:*'
+    with cache.lock:
+        cur = cache.db.execute(
+            "SELECT endpoint, key, status, body, fetched_at FROM http_cache WHERE api = 'gemini' AND endpoint LIKE 'artist_genre:%'"
+        ).fetchall()
+    for endpoint, key, status, body, at in cur:
+        if status != 200 or not body:
+            continue
+        parts = endpoint.split(":")
+        model_id = parts[1] if len(parts) > 1 else "unknown"
+        prompt_ver = parts[2] if len(parts) > 2 else "v1"
+        d = _obj(body)
+        if not d or not isinstance(d.get("styles"), list):
+            continue
+        genre_keys = []
+        weights = []
+        for s in d["styles"]:
+            if isinstance(s, dict) and s.get("parent") and s.get("style"):
+                genre_keys.append(f"{s['parent']}::{s['style']}")
+                weights.append(float(s.get("weight", 1.0)))
+        reason = d.get("reasoning")
+        out.append((key, model_id, prompt_ver, genre_keys, weights, reason, _ts(at)))
+    return out
+
+
 def parse_cache(con: duckdb.DuckDBPyConnection, cache: Cache) -> None:
     for table in ("enr_spotify_track", "enr_spotify_artist", "enr_mb_recording", "enr_mb_artist",
-                  "enr_lastfm_tags", "enr_lastfm_info", "enr_deezer_track", "enr_deezer_match"):
+                  "enr_lastfm_tags", "enr_lastfm_info", "enr_deezer_track", "enr_deezer_match",
+                  "enr_artist_genre_llm"):
         con.execute(f"DELETE FROM {table}")
     _insert(con, "enr_spotify_track", _spotify_tracks(cache))
     _insert(con, "enr_spotify_artist", _spotify_artists(cache))
@@ -236,6 +264,7 @@ def parse_cache(con: duckdb.DuckDBPyConnection, cache: Cache) -> None:
     by_id = _deezer_ids(cache)
     _insert(con, "enr_deezer_track", _deezer(cache, by_id))
     _insert(con, "enr_deezer_match", _deezer_matches(cache, by_id))
+    _insert(con, "enr_artist_genre_llm", _gemini_artist_genres(cache))
 
 
 def local_durations(con: duckdb.DuckDBPyConnection) -> None:

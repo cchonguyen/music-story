@@ -96,20 +96,20 @@ genreMode === "Classified Genres Only (100% Share)"
   ? Plot.plot({
       x: {label: "Year", tickFormat: "d"},
       y: {label: "Share of weighted plays", grid: true, tickFormat: "%"},
-      color: {legend: true},
+      color: {legend: true, domain: parents},
       marks: [Plot.areaY(parentSeries, {x: "year", y: "share_classified", fill: "parent_genre", tip: true}), Plot.ruleY([0])]
     })
   : genreMode === "Share of All Plays (Include Unclassified Band)"
   ? Plot.plot({
       x: {label: "Year", tickFormat: "d"},
       y: {label: "Share of total annual plays", grid: true, tickFormat: "%"},
-      color: {legend: true},
+      color: {legend: true, domain: [...parents, "unclassified / pending enrichment"]},
       marks: [Plot.areaY(parentSeries, {x: "year", y: "share_all", fill: "parent_genre", tip: true}), Plot.ruleY([0])]
     })
   : Plot.plot({
       x: {label: "Year", tickFormat: "d"},
       y: {label: "Weighted plays", grid: true},
-      color: {legend: true},
+      color: {legend: true, domain: parents},
       marks: [Plot.areaY(parentSeries, {x: "year", y: "plays_weighted", fill: "parent_genre", tip: true}), Plot.ruleY([0])]
     })
 ```
@@ -128,7 +128,10 @@ Inputs.table(parentSummaryTable, {
 Drill into any parent genre to inspect how its individual sub-styles shift over time and how much listening resolves to specific sub-styles versus the residual parent umbrella.
 
 ```js
-const parents = [...new Set(genreYear.map((d) => d.parent_genre))].sort();
+const parentsByPlays = d3.rollups(genreYear, (v) => d3.sum(v, (d) => d.plays_weighted), (d) => d.parent_genre)
+  .sort((a, b) => b[1] - a[1])
+  .map((d) => d[0]);
+const parents = parentsByPlays.length > 0 ? parentsByPlays : [...new Set(genreYear.map((d) => d.parent_genre))].sort();
 const parent = view(Inputs.select(parents, {label: "Parent genre"}));
 const styleScale = view(Inputs.radio(["Weighted Plays", "100% Share within Parent Genre"], {
   label: "Style scale",
@@ -139,7 +142,9 @@ const styleScale = view(Inputs.radio(["Weighted Plays", "100% Share within Paren
 ```js
 const rawStyles = filteredGenreYear.filter((d) => d.parent_genre === parent);
 const styleYears = [...new Set(rawStyles.map((d) => d.year))].sort((a, b) => a - b);
-const styleNames = [...new Set(rawStyles.map((d) => d.style))].sort();
+const styleNames = d3.rollups(rawStyles, (v) => d3.sum(v, (d) => d.plays_weighted), (d) => d.style)
+  .sort((a, b) => b[1] - a[1])
+  .map((d) => d[0]);
 const styleByYearMap = new Map(rawStyles.map((d) => [`${d.year}::${d.style}`, d.plays_weighted]));
 const styles = styleYears.flatMap((year) => {
   const yearTotal = d3.sum(styleNames, (s) => styleByYearMap.get(`${year}::${s}`) ?? 0);
@@ -213,7 +218,11 @@ Explore which artists anchor each sub-style within the selected parent genre (`m
 ```js
 const hierarchyStylesForParent = [
   "All Sub-Styles",
-  ...[...new Set(genreHierarchy.filter((d) => d.parent_genre === parent).map((d) => d.style))].sort()
+  ...d3.rollups(
+    genreHierarchy.filter((d) => d.parent_genre === parent),
+    (v) => d3.sum(v, (d) => d.plays_weighted),
+    (d) => d.style
+  ).sort((a, b) => b[1] - a[1]).map((d) => d[0])
 ];
 const pickedHierarchyStyle = view(Inputs.select(hierarchyStylesForParent, {
   label: `Sub-style in ${parent}`,
@@ -390,13 +399,11 @@ const xraySearch = view(Inputs.text({
 const xrayParent = view(Inputs.select(["All", ...parents], {label: "Parent genre", value: "All"}));
 const xrayStyleOptions = [
   "All",
-  ...[
-    ...new Set(
-      genreXray
-        .filter((d) => xrayParent === "All" || d.parent_genre === xrayParent)
-        .map((d) => d.style)
-    )
-  ].sort()
+  ...d3.rollups(
+    genreXray.filter((d) => xrayParent === "All" || d.parent_genre === xrayParent),
+    (v) => d3.sum(v, (d) => d.plays),
+    (d) => d.style
+  ).sort((a, b) => b[1] - a[1]).map((d) => d[0])
 ];
 const xrayStyle = view(Inputs.select(xrayStyleOptions, {label: "Primary sub-style", value: "All"}));
 const xrayLevel = view(Inputs.select(["All", "track", "album", "artist"], {

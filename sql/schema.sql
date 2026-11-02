@@ -271,6 +271,19 @@ CREATE OR REPLACE TABLE enr_deezer_match (
     fetched_at_utc   TIMESTAMP NOT NULL
 );
 
+-- LLM-synthesised artist genre profiles (Option 2, model-versioned and non-destructive).
+-- Keyed on (artist_norm, model_id, prompt_version).
+CREATE OR REPLACE TABLE enr_artist_genre_llm (
+    artist_norm      VARCHAR NOT NULL,
+    model_id         VARCHAR NOT NULL,
+    prompt_version   VARCHAR NOT NULL,
+    genres           VARCHAR[],               -- list of 'parent_genre::style'
+    weights          DOUBLE[],
+    reasoning        VARCHAR,
+    fetched_at_utc   TIMESTAMP NOT NULL,
+    PRIMARY KEY (artist_norm, model_id, prompt_version)
+);
+
 ------------------------------------------------------------------------------
 -- Layer 5: dimensions (04_dims.py, W7)
 ------------------------------------------------------------------------------
