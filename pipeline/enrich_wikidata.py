@@ -68,11 +68,11 @@ def run_bridge(con: duckdb.DuckDBPyConnection, cache: Cache, min_plays: int = 1)
     logger.info(f"Wikidata bridge: checking {len(rows)} artists with >= {min_plays} plays...")
 
     needed_mbids = []
-    mbid_to_norm: dict[str, str] = {}
+    mbid_to_norms: dict[str, list[str]] = {}
     discogs_to_norm: dict[int, str] = {}
 
     for a_norm, mbid, _ in rows:
-        mbid_to_norm[mbid] = a_norm
+        mbid_to_norms.setdefault(mbid, []).append(a_norm)
         cached = cache.get("wikidata", "artist_discogs", a_norm)
         if cached is not None:
             _, body = cached
@@ -83,22 +83,24 @@ def run_bridge(con: duckdb.DuckDBPyConnection, cache: Cache, min_plays: int = 1)
         else:
             needed_mbids.append(mbid)
 
+    needed_mbids = list(set(needed_mbids))
+
     if needed_mbids:
-        print(f"Wikidata bridge: fetching Discogs IDs for {len(needed_mbids)} artists ({len(discogs_to_norm)} already cached)...")
+        print(f"Wikidata bridge: fetching Discogs IDs for {len(needed_mbids)} MBIDs ({len(discogs_to_norm)} already cached)...")
         batches = [needed_mbids[i : i + BATCH_SIZE] for i in range(0, len(needed_mbids), BATCH_SIZE)]
         for idx, batch in enumerate(batches, 1):
             if idx % 5 == 1 or idx == len(batches):
-                print(f"  Wikidata batch {idx}/{len(batches)} ({len(batch)} artists)...", flush=True)
+                print(f"  Wikidata batch {idx}/{len(batches)} ({len(batch)} MBIDs)...", flush=True)
             try:
                 res = query_wikidata_batch(batch)
-                # Cache each artist in this batch
+                # Cache each artist associated with this batch
                 for mbid in batch:
-                    a_norm = mbid_to_norm[mbid]
                     d_ids = sorted(set(res.get(mbid, [])))
                     body = json.dumps({"discogs_artist_ids": d_ids})
-                    cache.put("wikidata", "artist_discogs", a_norm, 200, body, [])
-                    for d_id in d_ids:
-                        discogs_to_norm[d_id] = a_norm
+                    for a_norm in mbid_to_norms.get(mbid, []):
+                        cache.put("wikidata", "artist_discogs", a_norm, 200, body, [])
+                        for d_id in d_ids:
+                            discogs_to_norm[d_id] = a_norm
                 time.sleep(1.0)  # Friendly pacing to respect WDQS guidelines
             except Exception as e:  # noqa: BLE001
                 print(f"  Error querying Wikidata batch {idx}: {e}", file=sys.stderr)

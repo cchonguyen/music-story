@@ -199,3 +199,46 @@ def test_pre_prune_conservation_and_post_prune_disaggregation_invariance(fixture
     assert set(no_disagg) == set(with_disagg)
     for pg, weight in no_disagg.items():
         assert abs(weight - with_disagg[pg]) < 1e-9
+
+
+def test_vendor_reliability_matrix_weighting(fixture_db_path):
+    c = fresh_db()
+    load_fx(c, fixture_db_path, [i for i in INPUTS if i in [
+        "dim_artist", "dim_album", "dim_track", "bridge_track_artist", "enr_spotify_track", "enr_spotify_artist",
+        "enr_mb_recording", "enr_mb_artist", "enr_lastfm_tags"
+    ]])
+    c.execute(genre.LOAD_SQL)
+
+    tid, a_norm, _full_norm = c.execute(
+        "SELECT t.track_id, t.artist_norm, t.full_norm FROM dim_track t LIMIT 1"
+    ).fetchone()
+    c.execute("DELETE FROM enr_lastfm_tags")
+    c.execute("DELETE FROM enr_spotify_artist")
+    c.execute("DELETE FROM enr_mb_artist")
+    c.execute("DELETE FROM enr_mb_recording")
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS enr_discogs_artist (
+            artist_norm VARCHAR,
+            discogs_artist_id BIGINT,
+            genres VARCHAR[],
+            styles VARCHAR[],
+            master_count INTEGER,
+            fetched_at_utc TIMESTAMP
+        )
+    """)
+    # Discogs artist style: 'techno' (parent: 'electronic', multiplier 1.25)
+    c.execute("""
+        INSERT INTO enr_discogs_artist VALUES (?, 12345, ['electronic'], ['techno'], 1, TIMESTAMP '2026-10-22 00:00:00')
+    """, [a_norm])
+    # Last.fm artist tag: 'k-pop' (parent: 'pop', multiplier 1.15)
+    c.execute("""
+        INSERT INTO enr_lastfm_tags VALUES ('artist', ?, 'k-pop', 100, TIMESTAMP '2026-10-22 00:00:00')
+    """, [a_norm])
+
+    # With vendor_weights=True: normalized unit share * reliability (1.25 vs 1.15)
+    genre.build(c, vendor_weights=True)
+    weighted_rows = dict(c.execute("SELECT parent_genre, weight FROM track_genre WHERE track_id = ?", [tid]).fetchall())
+    assert abs(weighted_rows["electronic"] - (1.25 / 2.40)) < 1e-9
+    assert abs(weighted_rows["pop"] - (1.15 / 2.40)) < 1e-9
+

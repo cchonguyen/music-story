@@ -49,9 +49,9 @@ def get_latest_dump_url() -> str:
     return f"{DISCOGS_BASE_URL}/{latest_link}"
 
 
-def load_discogs_targets(cache: Cache) -> dict[int, str]:
-    """Read cached Wikidata mappings to get {discogs_artist_id: artist_norm}."""
-    discogs_to_norm: dict[int, str] = {}
+def load_discogs_targets(cache: Cache) -> dict[int, list[str]]:
+    """Read cached Wikidata mappings to get {discogs_artist_id: [artist_norm, ...]}."""
+    discogs_to_norms: dict[int, list[str]] = {}
     with cache.lock:
         rows = cache.db.execute(
             "SELECT key, body FROM http_cache WHERE api = 'wikidata' AND endpoint = 'artist_discogs'"
@@ -63,11 +63,13 @@ def load_discogs_targets(cache: Cache) -> dict[int, str]:
         try:
             d = json.loads(body)
             for d_id in d.get("discogs_artist_ids", []):
-                discogs_to_norm[int(d_id)] = artist_norm
+                aid = int(d_id)
+                discogs_to_norms.setdefault(aid, []).append(artist_norm)
         except (json.JSONDecodeError, ValueError):
             continue
 
-    return discogs_to_norm
+    # Deduplicate lists
+    return {aid: sorted(set(norms)) for aid, norms in discogs_to_norms.items()}
 
 
 def download_dump(url: str, dest_path: Path) -> None:
@@ -102,10 +104,10 @@ def download_dump(url: str, dest_path: Path) -> None:
 
 
 def parse_masters_dump(
-    dump_path: Path, discogs_to_norm: dict[int, str]
+    dump_path: Path, discogs_to_norms: dict[int, list[str]]
 ) -> dict[str, dict[str, Any]]:
     """Stream-parse the gzipped XML masters file, collecting styles for target artists."""
-    target_ids = set(discogs_to_norm.keys())
+    target_ids = set(discogs_to_norms.keys())
     print(f"Stream-parsing Discogs masters for {len(target_ids)} target artist IDs...")
     t0 = time.time()
 
@@ -138,16 +140,16 @@ def parse_masters_dump(
                         genres = [g.text.strip().lower() for g in elem.findall("genres/genre") if g.text]
                         styles = [s.text.strip().lower() for s in elem.findall("styles/style") if s.text]
                         for aid in matched_in_release:
-                            norm = discogs_to_norm[aid]
-                            rec = artist_results.setdefault(
-                                norm,
-                                {"discogs_artist_id": aid, "genres": {}, "styles": {}, "master_count": 0},
-                            )
-                            rec["master_count"] += 1
-                            for g in genres:
-                                rec["genres"][g] = rec["genres"].get(g, 0) + 1
-                            for s in styles:
-                                rec["styles"][s] = rec["styles"].get(s, 0) + 1
+                            for norm in discogs_to_norms.get(aid, []):
+                                rec = artist_results.setdefault(
+                                    norm,
+                                    {"discogs_artist_id": aid, "genres": {}, "styles": {}, "master_count": 0},
+                                )
+                                rec["master_count"] += 1
+                                for g in genres:
+                                    rec["genres"][g] = rec["genres"].get(g, 0) + 1
+                                for s in styles:
+                                    rec["styles"][s] = rec["styles"].get(s, 0) + 1
 
                 elem.clear()
 

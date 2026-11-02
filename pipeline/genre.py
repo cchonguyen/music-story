@@ -37,6 +37,7 @@ PROFILES: dict[str, dict[str, float | bool]] = {
         "floor_max": 0.15,
         "self_tag_only": True,
         "two_stage": False,
+        "vendor_weights": False,
     },
     "hard_step_25": {
         "rho_min": 0.25,
@@ -45,6 +46,7 @@ PROFILES: dict[str, dict[str, float | bool]] = {
         "floor_max": 0.25,
         "self_tag_only": False,
         "two_stage": True,
+        "vendor_weights": True,
     },
     "ramp_soft_hinge": {
         "rho_min": 0.10,
@@ -53,6 +55,7 @@ PROFILES: dict[str, dict[str, float | bool]] = {
         "floor_max": 0.20,
         "self_tag_only": False,
         "two_stage": True,
+        "vendor_weights": True,
     },
 }
 
@@ -79,6 +82,7 @@ def build_sql(
     floor_max: float = 0.20,
     self_tag_only: bool = False,
     two_stage: bool = True,
+    vendor_weights: bool | None = None,
 ) -> str:
     """Return the parameterised track_genre rebuild SQL.
 
@@ -89,21 +93,41 @@ def build_sql(
     - When two_stage=True, Stage A applies g(s_P) at the parent level to lock parent budgets B_P,
       and Stage B applies g(w / track_w) within each surviving parent and scales styles to B_P.
       When two_stage=False (legacy_step_15), pruning runs in a single track-level stage.
+    - When vendor_weights is True (default for two_stage=True), vendor shares are normalized per
+      (track_id, level, source) and weighted by domain reliability (Discogs on electronic/rock/jazz,
+      MusicBrainz on classical/soundtrack, Last.fm on pop/world/hip hop).
     """
+    if vendor_weights is None:
+        vendor_weights = two_stage
+
     style_expr = "m.style" if self_tag_only else "CASE WHEN m.is_umbrella THEN m.parent_genre ELSE m.style END"
+
+    if vendor_weights:
+        styled_select = f"SELECT l.track_id, l.level, l.source, m.parent_genre, {style_expr} AS style, sum(l.cnt) AS cnt"
+        norm_select = "SELECT *, cnt / sum(cnt) OVER (PARTITION BY track_id, level, source) AS share FROM styled"
+        vendor_mult = """* (CASE
+                   WHEN source = 'discogs' AND parent_genre IN ('electronic', 'rock', 'jazz') THEN 1.25
+                   WHEN source = 'musicbrainz' AND parent_genre IN ('classical', 'soundtrack') THEN 1.25
+                   WHEN source = 'lastfm' AND parent_genre IN ('pop', 'world', 'hip hop') THEN 1.15
+                   ELSE 1.0
+               END)"""
+    else:
+        styled_select = f"SELECT l.track_id, l.level, m.parent_genre, {style_expr} AS style, sum(l.cnt) AS cnt"
+        norm_select = "SELECT *, cnt / sum(cnt) OVER (PARTITION BY track_id, level) AS share FROM styled"
+        vendor_mult = ""
 
     head_ctes = f"""
 DELETE FROM track_genre;
 INSERT INTO track_genre
 WITH lvl AS (
-    -- (track_id, level, tag, count)
-    SELECT t.track_id, 'track' AS level, l.tag, l.count::DOUBLE AS cnt
+    -- (track_id, level, source, tag, count)
+    SELECT t.track_id, 'track' AS level, 'lastfm' AS source, l.tag, l.count::DOUBLE AS cnt
     FROM dim_track t JOIN enr_lastfm_tags l
       ON l.entity_type = 'track' AND l.entity_key = t.artist_norm || '::' || t.full_norm
     UNION ALL
     -- MB recordings reach a track through any ISRC they list (isrc and mbid lookups) or, for
     -- search lookups, through the track's key; each recording counts once per track.
-    SELECT track_id, 'track', lower(trim(g.tag)), 100.0
+    SELECT track_id, 'track', 'musicbrainz', lower(trim(g.tag)), 100.0
     FROM (
         SELECT DISTINCT t.track_id, r.genres
         FROM dim_track t
@@ -115,46 +139,46 @@ WITH lvl AS (
           ON r.lookup_kind = 'search' AND r.lookup_key = t.artist_norm || '::' || t.full_norm AND r.score >= 90
     ) x, unnest(x.genres) g(tag)
     UNION ALL
-    SELECT t.track_id, 'album', l.tag, l.count::DOUBLE
+    SELECT t.track_id, 'album', 'lastfm', l.tag, l.count::DOUBLE
     FROM dim_track t JOIN dim_album a USING (album_id) JOIN dim_artist pa ON pa.artist_id = a.primary_artist_id
     JOIN enr_lastfm_tags l
       ON l.entity_type = 'album' AND l.entity_key = pa.artist_norm || '::' || a.album_norm
     UNION ALL
-    SELECT t.track_id, 'artist', l.tag, l.count::DOUBLE
+    SELECT t.track_id, 'artist', 'lastfm', l.tag, l.count::DOUBLE
     FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id JOIN enr_lastfm_tags l
       ON l.entity_type = 'artist' AND l.entity_key = d.artist_norm
     UNION ALL
-    SELECT t.track_id, 'artist', lower(trim(g.tag)), 100.0
+    SELECT t.track_id, 'artist', 'spotify', lower(trim(g.tag)), 100.0
     FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id
     JOIN enr_spotify_artist s ON s.spotify_artist_id = d.spotify_artist_id, unnest(s.genres) g(tag)
     UNION ALL
-    SELECT t.track_id, 'artist', lower(trim(g.tag)), 100.0
+    SELECT t.track_id, 'artist', 'musicbrainz', lower(trim(g.tag)), 100.0
     FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id
     JOIN enr_mb_artist m ON m.artist_mbid = d.artist_mbid, unnest(m.genres) g(tag)
     UNION ALL
     -- LLM-synthesised artist genres (Option 2). Gives 100.0 base weight per artist level.
-    SELECT t.track_id, 'artist', lower(trim(split_part(unnest(llm.genres), '::', 2))), unnest(llm.weights) * 100.0
+    SELECT t.track_id, 'artist', 'llm', lower(trim(split_part(unnest(llm.genres), '::', 2))), unnest(llm.weights) * 100.0
     FROM dim_track t
     JOIN dim_artist d ON d.artist_id = t.primary_artist_id
     JOIN enr_artist_genre_llm llm ON llm.artist_norm = d.artist_norm
     UNION ALL
     -- Discogs physical release styles (Option 4). Gives 80.0 base weight per artist level.
-    SELECT t.track_id, 'artist', lower(trim(unnest(disc.styles))), 80.0
+    SELECT t.track_id, 'artist', 'discogs', lower(trim(unnest(disc.styles))), 80.0
     FROM dim_track t
     JOIN dim_artist d ON d.artist_id = t.primary_artist_id
     JOIN enr_discogs_artist disc ON disc.artist_norm = d.artist_norm
 ),
 styled AS (
-    SELECT l.track_id, l.level, m.parent_genre, {style_expr} AS style, sum(l.cnt) AS cnt
+    {styled_select}
     FROM lvl l JOIN genre_map m ON m.tag = l.tag AND m.is_genre
     GROUP BY ALL
 ),
 norm AS (
-    SELECT *, cnt / sum(cnt) OVER (PARTITION BY track_id, level) AS share FROM styled
+    {norm_select}
 ),
 combined AS (
     SELECT track_id, parent_genre, style,
-           sum(share * CASE level WHEN 'track' THEN 1.0 WHEN 'album' THEN 0.7 ELSE 0.5 END) AS w,
+           sum(share * (CASE level WHEN 'track' THEN 1.0 WHEN 'album' THEN 0.7 ELSE 0.5 END) {vendor_mult}) AS w,
            min(CASE level WHEN 'track' THEN 1 WHEN 'album' THEN 2 ELSE 3 END) AS lv
     FROM norm GROUP BY ALL
 ),
@@ -306,6 +330,7 @@ def build(
     floor_max: float = 0.20,
     self_tag_only: bool = False,
     two_stage: bool = True,
+    vendor_weights: bool | None = None,
 ) -> None:
     """Rebuild track_genre using the specified disaggregation and floor parameters."""
     con.execute(
@@ -316,6 +341,7 @@ def build(
             floor_max=floor_max,
             self_tag_only=self_tag_only,
             two_stage=two_stage,
+            vendor_weights=vendor_weights,
         )
     )
 
