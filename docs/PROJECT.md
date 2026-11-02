@@ -231,6 +231,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-11-01 | Parent genre consolidation: 13 parents reduced to 10 (`metal` $\to$ `rock`, `folk` $\to$ `country`, `latin` $\to$ `world`), expanded `genre_map.csv` (357 rows) with 75+ unmapped tags and noise tag filters (`instrumental`, `piano`, etc. set to `is_genre=false`) | Eliminates fragmented buckets, balances volume distribution, and aligns with user catalog intuition |
 | 2026-11-01 | `enr_artist_genre_llm` additive schema & batch runner `pipeline/enrich_gemini.py` using `gemini-3.6-flash` | Classifies 700 artists with $\ge 3$ plays lacking specific substyles; cached into SQLite and parsed additively into DuckDB without destroying raw tags or scrobbles; lifts play classification to 98.73% |
 | 2026-11-01 | Volume-ranked genre UI on `genres.md` | Parent genre and sub-style dropdown pickers and Plot color domains sort descending by weighted play volume instead of alphabetically |
+| 2026-11-01 | Discogs CC0 monthly dump stream-parser & Wikidata ID bridge (`pipeline/enrich_wikidata.py`, `pipeline/enrich_discogs.py`, `enr_discogs_artist`) | Bridges 3,807 catalog artists (77.8% of plays) to Discogs IDs; streams 2.6M masters without disk bloat, extracting physical release styles for 3,508 catalog artists; increases Electronic sub-style resolution to 91.4% and Rock to 93.0% |
 
 ## 8. Open items
 

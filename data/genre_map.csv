@@ -356,3 +356,30 @@ masterpiece,,,false,false
 vinyl,,,false,false
 christmas music,,,false,false
 aoty,,,false,false
+holiday,,,false,false
+concert film,,,false,false
+music video,,,false,false
+interview,,,false,false
+dialogue,,,false,false
+comedy,,,false,false
+spoken word,,,false,false
+rnb/swing,new jack swing,r&b,true,false
+rhythm & blues,contemporary r&b,r&b,true,false
+euro house,eurodance,electronic,true,false
+tribal house,house,electronic,true,false
+garage house,uk garage,electronic,true,false
+country rock,country rock,country,true,false
+arena rock,classic rock,rock,true,false
+art rock,progressive rock,rock,true,false
+rock & roll,classic rock,rock,true,false
+bubblegum,bubblegum pop,pop,true,false
+euro-disco,disco,electronic,true,false
+reggae-pop,reggae,world,true,false
+big band,swing,jazz,true,false
+contemporary jazz,smooth jazz,jazz,true,false
+jazz-rock,jazz fusion,jazz,true,false
+gangsta,gangsta rap,hip hop,true,false
+gospel,soul,r&b,true,false
+post rock,post-rock,rock,true,false
+theme,soundtrack,soundtrack,true,true
+chanson,chanson,world,true,false

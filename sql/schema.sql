@@ -284,6 +284,17 @@ CREATE OR REPLACE TABLE enr_artist_genre_llm (
     PRIMARY KEY (artist_norm, model_id, prompt_version)
 );
 
+-- Discogs master release physical-media genres & styles aggregated by artist.
+CREATE OR REPLACE TABLE enr_discogs_artist (
+    artist_norm       VARCHAR NOT NULL,
+    discogs_artist_id BIGINT NOT NULL,
+    genres            VARCHAR[],
+    styles            VARCHAR[],
+    master_count      INTEGER NOT NULL,
+    fetched_at_utc    TIMESTAMP NOT NULL,
+    PRIMARY KEY (artist_norm, discogs_artist_id)
+);
+
 ------------------------------------------------------------------------------
 -- Layer 5: dimensions (04_dims.py, W7)
 ------------------------------------------------------------------------------
