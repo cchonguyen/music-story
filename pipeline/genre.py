@@ -137,6 +137,12 @@ WITH lvl AS (
     FROM dim_track t
     JOIN dim_artist d ON d.artist_id = t.primary_artist_id
     JOIN enr_artist_genre_llm llm ON llm.artist_norm = d.artist_norm
+    UNION ALL
+    -- Discogs physical release styles (Option 4). Gives 80.0 base weight per artist level.
+    SELECT t.track_id, 'artist', lower(trim(unnest(disc.styles))), 80.0
+    FROM dim_track t
+    JOIN dim_artist d ON d.artist_id = t.primary_artist_id
+    JOIN enr_discogs_artist disc ON disc.artist_norm = d.artist_norm
 ),
 styled AS (
     SELECT l.track_id, l.level, m.parent_genre, {style_expr} AS style, sum(l.cnt) AS cnt

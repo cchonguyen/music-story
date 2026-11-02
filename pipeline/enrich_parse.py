@@ -250,10 +250,28 @@ def _gemini_artist_genres(cache: Cache) -> list[tuple]:
     return out
 
 
+def _discogs_artist_styles(cache: Cache) -> list[tuple]:
+    out = []
+    for key, status, body, at in cache.rows("discogs", "artist_styles"):
+        if status != 200 or not body:
+            continue
+        d = _obj(body)
+        if not d:
+            continue
+        d_id = _int(d.get("discogs_artist_id"))
+        if not d_id:
+            continue
+        genres = [str(g).strip().lower() for g in d.get("genres") or [] if g]
+        styles = [str(s).strip().lower() for s in d.get("styles") or [] if s]
+        cnt = _int(d.get("master_count")) or 0
+        out.append((key, d_id, genres, styles, cnt, _ts(at)))
+    return out
+
+
 def parse_cache(con: duckdb.DuckDBPyConnection, cache: Cache) -> None:
     for table in ("enr_spotify_track", "enr_spotify_artist", "enr_mb_recording", "enr_mb_artist",
                   "enr_lastfm_tags", "enr_lastfm_info", "enr_deezer_track", "enr_deezer_match",
-                  "enr_artist_genre_llm"):
+                  "enr_artist_genre_llm", "enr_discogs_artist"):
         con.execute(f"DELETE FROM {table}")
     _insert(con, "enr_spotify_track", _spotify_tracks(cache))
     _insert(con, "enr_spotify_artist", _spotify_artists(cache))
@@ -265,6 +283,7 @@ def parse_cache(con: duckdb.DuckDBPyConnection, cache: Cache) -> None:
     _insert(con, "enr_deezer_track", _deezer(cache, by_id))
     _insert(con, "enr_deezer_match", _deezer_matches(cache, by_id))
     _insert(con, "enr_artist_genre_llm", _gemini_artist_genres(cache))
+    _insert(con, "enr_discogs_artist", _discogs_artist_styles(cache))
 
 
 def local_durations(con: duckdb.DuckDBPyConnection) -> None:
