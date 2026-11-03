@@ -5,10 +5,8 @@
   music.charliechonguyen.com (behind Cloudflare Access). Detail: `docs/PROJECT.md`.
 
 ## Active External Services & Keys
-- Cloudflare (Workers static assets + Access), Spotify, Last.fm, Deezer, MusicBrainz.
+- Cloudflare (Workers static assets + Access), Spotify, Last.fm, Deezer, MusicBrainz, Gemini.
   Key names live in `.env.example`; values only in `.env`.
 
 ## Current Build Status
-- **Live & Verified:** Fixture site behind Access; packets W0-W10 merged (see `STATE.md`).
-- **In Progress:** Daily enrichment fetch (Spotify quota-limited).
-- **Up Next:** Per `STATE.md` "Next".
+- Wave, packet and deploy status: `STATE.md`. Open items: `docs/PROJECT.md` section 8.
