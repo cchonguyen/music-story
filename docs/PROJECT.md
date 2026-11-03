@@ -208,6 +208,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 
 | Date | Decision | Why |
 | --- | --- | --- |
+| 2026-11-03 | Working rules moved from `CLAUDE.md` to `docs/RULES.md`; `CLAUDE.md` is a shim | One place per rule; the harness caps `CLAUDE.md` at 5 lines |
 | 2026-10-22 | Host on Workers static assets, not Pages | Pages always serves a public `*.pages.dev` copy; Workers can switch every extra URL off |
 | 2026-10-22 | Matcher pass 3 + twin removal | Gate 1 was 89.57%; after the change it is 95.81% |
 | 2026-10-22 | Canonical track id = ISRC | 3,151 songs span several URIs |

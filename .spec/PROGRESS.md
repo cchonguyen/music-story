@@ -1,14 +1,8 @@
 # Task Progress & Single-Slice Work Lock
 
 > Rule: Mark only ONE task line at a time with the active work tag.
-> `STATE.md` is the wave ledger; this file mirrors only the current wave's atomic tasks.
+> `STATE.md` is the wave ledger. This file holds only the slices of the current wave. Completed
+> slices move to `.spec/archive/HISTORY.md`.
 
-- [x] **Slice 3** `[CORE / DATA]`: Sync harness v2.2.0 from claude-harness-hub so `/prep-audit spec` appends linked and backticked references (PROJECT.md, STATE.md, schema) under `# APPENDED REFERENCES` — Target files: `.harness/scripts/bundle-handoff.mjs`, `.harness-version`, `.harness/hub.json`
-- [x] **Slice 4** `[CORE / DATA]`: Explorer Parquet size guard: `parquet_bytes` raises if the file exceeds 20 MiB; test covers the guard — Target files: `pipeline/site_data.py`, `tests/test_site_data.py`, `docs/PROJECT.md`
-- [x] **Slice 7** `[CORE / DATA]`: W9b two-tier genre umbrella disaggregation (`is_umbrella`, Option A consolidation, ramp `[0.10, 0.30]`, two-stage soft-hinge `[0.10, 0.20]`, Concert Tracker `artist_genre.py` preserved on `MIN_SHARE = 0.15`) — Target files: `sql/schema.sql`, `data/genre_map.csv`, `scripts/make_fixtures.py`, `pipeline/genre.py`, `tests/test_schema.py`, `tests/golden/genre_cases.py`, `tests/golden/genre_legacy_fixture.csv`, `tests/test_genre_fixture.py`, `specs/W9b_genre_umbrella.md`, `docs/PROJECT.md`, `STATE.md`
-- [x] **Slice 8** `[CORE / DATA]`: W9c genre lineage X-ray (`mart_genre_xray` 4-tuple key), hierarchy (`mart_genre_hierarchy`), and local-time circadian clock (`mart_genre_clock`) marts — Target files: `sql/marts/50_insights.sql`, `pipeline/site_data.py`, `scripts/generate_fixture_marts.py`, `site/src/data/genre_xray.json.sh`, `site/src/data/genre_hierarchy.json.sh`, `site/src/data/genre_clock.json.sh`, `tests/test_marts_fixture.py`, `tests/test_site_data.py`, `specs/W9c_genre_xray_marts.md`
-- [x] **Slice 9** `[UI / VISUAL]`: W10c & W10d Genres page upgrade, DuckDB-Wasm Explorer `LEFT JOIN xray` with multi-facet subfilters, and synchronized `Inputs.table` views across all chapters — Target files: `site/src/genres.md`, `site/src/explorer.md`, `site/src/index.md`, `site/src/artists.md`, `site/src/songs.md`, `site/src/habits.md`, `site/src/places.md`, `specs/W10c_genres_page.md`, `specs/W10d_explorer_and_tables.md`
-- [ ] **Slice 5** `[CORE / DATA]`: Real `build_pipeline` once the Spotify fetch completes (STATE.md Next 3); record counts and Gate checks — Target files: `STATE.md`, `docs/PROJECT.md`
-- [ ] **Slice 6** `[UI / VISUAL]`: Real-data site build with `SITE_DB=build/music.duckdb` and deploy behind Access; re-verify Access redirects — Target files: `site/src/*.md`, `site/observablehq.config.js`, `STATE.md`
-- [x] **Slice 1** `[CORE / DATA]`: Install harness v2.0 — Target files: `.claude/`, `.harness/`, `.spec/`, `CLAUDE.md`, `.gitignore`
-- [x] **Slice 2** `[CORE / DATA]`: W10b explorer page (mixed scope; future waves split data and page slices) — Target files: `sql/marts/40_explorer.sql`, `pipeline/site_data.py`, `site/src/explorer.md`, `site/src/data/plays_explorer.parquet.sh`, `site/observablehq.config.js`, `tests/test_site_data.py`, `specs/W10b_explorer.md`, `docs/PROJECT.md`, `STATE.md`
+- [x] **Slice 5** `[CORE / DATA]`: Real `build_pipeline` once the Spotify fetch completes; record counts and Gate checks (verified 2026-11-03, see STATE.md) — Target files: `STATE.md`, `docs/PROJECT.md` | Coords: [510, 520]
+- [x] **Slice 6** `[UI / VISUAL]`: Real-data site build and deploy behind Access (deployed 2026-11-03, see STATE.md) — Target files: `site/src/*.md`, `site/observablehq.config.js`, `STATE.md` | Coords: [510, 560]
