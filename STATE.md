@@ -43,6 +43,9 @@ Next:
    Real-data deploy: build with SITE_DB=build/music.duckdb (fixture otherwise).
 3. Wave 2 merged. `build_pipeline --fixtures` runs 00-07 end to end (fixture enr_* copied, never the real
    cache). Next: when the fetch is done, `build_pipeline` (real), then site build with SITE_DB + deploy.
+   2026-11-03: real build verified on Charlie's Mac after `build_pipeline --from 03`. `pipeline.genre unmapped`
+   exit 0 (no unmapped genres); site build with SITE_DB exit 0, 7 pages. explorer 19.2 MB, genres 19.4 MB
+   (Cloudflare limit 25 MB, watch before deploy). Deploy not yet run.
 
 Decisions (window 1 review):
 - Gate 1 fix (pass 3 + twins): see CLAUDE.md decision log and specs/W2_match.md rule 3.
