@@ -23,15 +23,18 @@ jobs:
         with:
           node-version: 22
 
-      # Same quick checks as the PR check. Delete any line the spoke has no tool for.
+      - uses: astral-sh/setup-uv@v5
+
+      # Same quick checks as the PR check (music-story stack: Python via uv, Observable site via npm).
       - name: Quick checks on main
         id: checks
         continue-on-error: true
         run: |
-          npm install --no-audit --no-fund
-          npm run typecheck --silent
           npm run lint --silent
-          npm test --silent
+          uv run python scripts/make_fixtures.py
+          uv run pytest -q
+          uv run ruff check
+          cd site && npm ci --no-audit --no-fund && npm run build
 
       - name: Mark main red
         if: steps.checks.outcome == 'failure'

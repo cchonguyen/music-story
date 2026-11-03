@@ -20,19 +20,21 @@ jobs:
         with:
           node-version: 22
 
+      - uses: astral-sh/setup-uv@v5
+
       # Scope, Red tripwires, and test-assertion rule. --strict makes problems exit 1.
       - name: PR scope check
         run: node .harness/scripts/pr-scope-check.mjs origin/${{ github.base_ref }} HEAD --strict
 
-      # Quick checks from the spoke's CLAUDE.md. Delete any line the spoke has no tool for.
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Typecheck
-        run: npm run typecheck --silent
-
+      # Quick checks from the spoke's CLAUDE.md (music-story: uv for Python, npm for the Observable site).
       - name: Lint
         run: npm run lint --silent
 
       - name: Unit tests
-        run: npm test --silent
+        run: |
+          uv run python scripts/make_fixtures.py
+          uv run pytest -q
+          uv run ruff check
+
+      - name: Site build
+        run: cd site && npm ci --no-audit --no-fund && npm run build
