@@ -1,19 +1,11 @@
 # Antigravity & External Agent Contract (music-story)
 
-## 1. Pre-Flight Inspection
-Before modifying files or generating plans:
-- Read `CLAUDE.md` (project commands and conventions).
-- Read `STATE.md` (current wave, packet status, decisions).
-- Read `.spec/SESSION_HANDOFF.md` (where Claude or the last session left off).
-- The full external co-development contract is `.spec/EXTERNAL_AGENT_RULES.md`.
+## 1. Pre-Flight
+- Read `CLAUDE.md`, `STATE.md` and `.spec/SESSION_HANDOFF.md`. Rules: `docs/RULES.md`. Full contract: `.spec/EXTERNAL_AGENT_RULES.md`.
 
 ## 2. Bounded Execution & Git Rigor
-- **Strict Branch & PR Paradigm:** NEVER commit or push directly to `main`. Every change must live on an isolated feature branch (e.g. `antigravity/<feature>` or `feat/<feature>`) and be merged via a GitHub Pull Request.
-- **Spoke Repository Protection:** NEVER modify or delete files inside `.claude/`, `.harness/`, or `.harness-version`.
-- **Pre-Commit Verification:** Run project checks before opening a PR:
-  - `uv run pytest -q`
-  - `uv run ruff check`
-- **Mandatory Baton Pass:** When concluding an implementation session, record your verification status and next steps in `.spec/SESSION_HANDOFF.md`.
+- Never commit or push to `main`. Use a feature branch and a PR. Never modify `.claude/`, `.harness/` or `.harness-version`.
+- Before a PR, run `uv run pytest -q` and `uv run ruff check`. Record results and next steps in `.spec/SESSION_HANDOFF.md`.
 
 <!-- >>> harness >>> -->
 ## Harness Sector 000 Card Catalog (Falcon Protocol)
@@ -29,7 +21,7 @@ Your mission is to coordinate work with minimal context bloat. Do NOT explore ra
 
 ### 2. Quiet Verification Commands (Mandatory)
 - Unit Tests: `node --test .harness/hooks/lib/*.test.mjs .harness/scripts/*.test.mjs .harness/scripts/lib/*.test.mjs`
-- Typecheck & Lint: `npm run typecheck --silent && npm run lint --silent`
+- Typecheck & Lint: run the commands listed under `Project-Specific Commands` in `CLAUDE.md`.
 - Navigator Checkpoint (`finish-slice.mjs` -> `navigator.mjs`): `node .harness/scripts/finish-slice.mjs "<msg>"` -> `node .harness/scripts/navigator.mjs --check`
 - Scope & PR Gate: `node .harness/scripts/pr-scope-check.mjs`
 
