@@ -45,7 +45,9 @@ Next:
    cache). Next: when the fetch is done, `build_pipeline` (real), then site build with SITE_DB + deploy.
    2026-11-03: real build verified on Charlie's Mac after `build_pipeline --from 03`. `pipeline.genre unmapped`
    exit 0 (no unmapped genres); site build with SITE_DB exit 0, 7 pages. explorer 19.2 MB, genres 19.4 MB
-   (Cloudflare limit 25 MB, watch before deploy). Deploy not yet run.
+   (Cloudflare limit 25 MB, watch before deploy). Deployed 2026-11-03 with `npx wrangler deploy`
+   (version 9be5622b-4035-475b-9c29-af645ff23c21, assets unchanged on upload). `curl -sI` on
+   music.charliechonguyen.com returns 302 to Access, so the site is still private.
 
 Decisions (window 1 review):
 - Gate 1 fix (pass 3 + twins): see CLAUDE.md decision log and specs/W2_match.md rule 3.
