@@ -72,7 +72,7 @@
     ".harness/scripts/lib/sync-core.test.mjs": "9c3a9607ea4d7ddeb63aaab94c1be319bdb309fc3da1c9e9c0f76092a70f157b",
     ".harness/scripts/navigator.mjs": "3de369e187bd1a10bccb6f1070861825bed4b10592bf8db3944b400203ba43dc",
     ".harness/scripts/navigator.test.mjs": "e5ec650edec01f9177b92d050248dfbc5f705c687c05fcea99c34003c02c4f68",
-    ".harness/scripts/pr-scope-check.mjs": "029d4856aaf35b4857f1a8730127531168b2f5a5943c254c518f3bf2244c0453",
+    ".harness/scripts/pr-scope-check.mjs": "3a9b74f79e36f2cbe5f84e2730accf3f90c0629a9e19691e2f81b4fa50df1a85",
     ".harness/scripts/pr-scope-check.test.mjs": "d99da1eb614b37d9ba140c0e0c175a4b45dc8c08f5b5351d3111ab44d91269d8",
     ".harness/scripts/referee.mjs": "b9090a51f6a7dc57c853f1179d6dbbb6325968d4de5061bdadcd727e8aa6750f",
     ".harness/scripts/referee.test.mjs": "6f22e7c774ee7f095f15594a926b8caeebfb95deb7db96185214fd05e285660d",
