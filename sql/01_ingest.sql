@@ -100,8 +100,8 @@ SELECT
     platform                                                                  AS platform_raw,
     CASE
         WHEN lower(platform) LIKE '%ios%' OR lower(platform) LIKE '%iphone%' OR lower(platform) LIKE '%ipad%' THEN 'ios'
-        WHEN platform LIKE 'Android%' THEN 'android'
-        WHEN platform LIKE 'Windows%' THEN 'windows'
+        WHEN lower(platform) LIKE 'android%' THEN 'android'
+        WHEN lower(platform) LIKE 'windows%' THEN 'windows'
         WHEN platform LIKE 'OS X%' OR platform LIKE 'osx%' THEN 'mac'
         WHEN platform LIKE 'Linux%' THEN 'linux'
         WHEN platform LIKE 'WebPlayer%' OR platform LIKE 'web_player%' THEN 'web'
