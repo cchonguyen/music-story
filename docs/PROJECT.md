@@ -245,8 +245,6 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
   figure before choosing a Spotify cap.
 - Review the genre map parents with Charlie: blues to jazz, hardcore to metal, reggae/dub/ska to
   world.
-- Platform `ios` is matched exactly, but 4,104 of 12,036 real `other` plays are iOS, iPhone or
-  iPad strings. The proposed W1 fix is a case-insensitive match plus a fixture update.
 - When the fetch is done: real `build_pipeline`, then the site build with SITE_DB, then deploy.
 - The explorer has only been checked on the fixture, in a headless browser with the CDN files served
   locally (this cloud container blocks jsDelivr and extensions.duckdb.org). Check it once on the
