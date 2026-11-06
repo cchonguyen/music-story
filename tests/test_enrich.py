@@ -497,6 +497,17 @@ def test_spotify_tail_lists_keys_past_the_cap():
     assert spotify_tail(con, 3) == []
 
 
+def test_status_handles_apis_without_a_rate_interval(tmp_path, capsys):
+    cache_path = tmp_path / "cache.sqlite"
+    cache = Cache(cache_path)
+    cache.enqueue([("discogs", "artist_styles", "a", 1), ("gemini", "artist_genre:x:v1", "a", 1)])
+    cache.put("discogs", "artist_styles", "b", 200, "{}", [])
+    cache.close()
+    assert enrich.status(cache_path) == 0
+    out = capsys.readouterr().out
+    assert "discogs" in out and "gemini" in out and "n/a" in out
+
+
 def test_status_reports_spotify_play_coverage(tmp_path, monkeypatch):
     db = tmp_path / "music.duckdb"
     con = _events_db()
