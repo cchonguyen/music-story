@@ -276,8 +276,11 @@ def status(cache_path=None) -> int:
             locked = f"  (paused: {cache.pause_reason(api) or 'rate limit'} until {resume:%a %H:%M} local, then)"
         if BUDGETS.get(api):
             print(f"  {api:<12} {n / BUDGETS[api]:6.1f} days{locked}")
-        else:
+        elif api in INTERVALS:
             print(f"  {api:<12} {n * INTERVALS[api] / 3600:6.1f} h{locked}")
+        else:
+            # apis filled by their own step (e.g. discogs dump, gemini batch) have no rate interval here
+            print(f"  {api:<12} {'n/a':>6}     (not paced by fetch){locked}")
     cache.close()
     return 0
 
