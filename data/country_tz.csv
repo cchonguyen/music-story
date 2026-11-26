@@ -1,5 +1,5 @@
 country,tz,multi_zone,note
-US,America/Los_Angeles,true,home rule: home zone
+US,America/Los_Angeles,true,home zone
 BE,Europe/Brussels,false,
 CA,America/Vancouver,true,guess: nearest to home; check trips
 CR,America/Costa_Rica,false,

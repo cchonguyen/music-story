@@ -19,7 +19,7 @@ from pipeline.enrich_cache import Cache
 
 logger = logging.getLogger(__name__)
 SPARQL_URL = "https://query.wikidata.org/sparql"
-USER_AGENT = "music-story/0.1 (redacted-email@example.com)"
+USER_AGENT = f"music-story/0.1 ( {config.MUSICBRAINZ_CONTACT or 'set MUSICBRAINZ_CONTACT in .env'} )"
 BATCH_SIZE = 100
 
 
