@@ -127,6 +127,8 @@ def parse_csv(text: str) -> list[Row]:
 
 
 def validate(groups: dict[str, list[Row]], con: duckdb.DuckDBPyConnection) -> list[str]:
+    """Check each track's rows. Rows with a blank or zero share are ignored, as they carry no genre weight.
+    The same style may appear under two parents, so duplicates are checked on the (parent, style) pair."""
     known = {r[0] for r in con.execute("SELECT track_id FROM dim_track").fetchall()}
     genres = artist_sheet._valid_genres(con)
     errors: list[str] = []
@@ -138,24 +140,18 @@ def validate(groups: dict[str, list[Row]], con: duckdb.DuckDBPyConnection) -> li
             if len(group) > 1:
                 errors.append(f"{key}: a blank style must be the only row for the track (clears genres)")
             continue
-        seen: set[str] = set()
-        total = 0.0
-        share_error = False
-        for r in group:
+        weighted = [r for r in group if (_share_of(r) or 0) > 0]
+        if not weighted:
+            errors.append(f"{key}: no genre has a share above 0")
+            continue
+        seen: set[tuple[str, str]] = set()
+        for r in weighted:
             parent, style = _text(r.get("parent_genre")), _text(r.get("style"))
-            share = _share_of(r)
             if (parent, style) not in genres:
                 errors.append(f"{key}: '{style}' is not a genre under '{parent}'")
-            if style in seen:
-                errors.append(f"{key}: duplicate style '{style}'")
-            seen.add(style)
-            if share is None or share <= 0:
-                errors.append(f"{key}: share for '{style}' must be a positive number")
-                share_error = True
-            else:
-                total += share
-        if not share_error and total <= 0:
-            errors.append(f"{key}: total share must be above 0")
+            if (parent, style) in seen:
+                errors.append(f"{key}: duplicate genre '{style}' under '{parent}'")
+            seen.add((parent, style))
     return errors
 
 

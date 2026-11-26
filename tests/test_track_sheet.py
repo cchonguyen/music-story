@@ -104,3 +104,14 @@ def test_site_rows_have_the_export_columns(con):
     data = sheet.rows(con, 3)
     assert data
     assert set(data[0].keys()) == {"track_id", "title", "artist", "plays", "parent_genre", "style", "share", "source"}
+
+
+def test_zero_share_rows_are_ignored_and_same_style_under_two_parents_is_allowed(con):
+    track_id, _ = _busy_track(con)
+    parent, style = _valid_pair(con)
+    group = [
+        {"parent_genre": parent, "style": style, "share": "1"},
+        {"parent_genre": parent, "style": style, "share": "0"},
+    ]
+    assert sheet.validate({track_id: group}, con) == []
+    assert sheet.normalise(group) == [(parent, style, 1.0)]
