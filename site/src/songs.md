@@ -189,3 +189,42 @@ Inputs.table(songAgeSummaryTable, {
   rows: 8
 })
 ```
+
+## Track genre sheet
+
+Every track with at least 3 plays, with its title, artist, genres and share. Export the CSV, edit it outside the site, then import it on the Mac with `uv run python -m pipeline.track_sheet import <file>`. Imported genres replace the automatic genres for those tracks.
+
+```js
+const trackSheetRows = await FileAttachment("data/track_genre_sheet.json").json();
+
+const csvCellT = (v) => {
+  if (v == null) return "";
+  const s = String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+const trackSheetCsv = (rows) => {
+  const head = ["track_id", "title", "artist", "plays", "parent_genre", "style", "share", "source"];
+  const lines = rows.map((r) =>
+    [r.track_id, r.title, r.artist, r.plays, r.parent_genre, r.style, r.share, r.source].map(csvCellT).join(",")
+  );
+  return [head.join(","), ...lines].join("\n") + "\n";
+};
+
+const trackSheetButton = Inputs.button("Export track CSV", {
+  reduce: () => {
+    const blob = new Blob([trackSheetCsv(trackSheetRows)], {type: "text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "track_genre_sheet.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+});
+display(trackSheetButton);
+```
+
+```js
+display(html`<p>${trackSheetRows.length.toLocaleString()} rows, ${new Set(trackSheetRows.map((r) => r.track_id)).size.toLocaleString()} tracks.</p>`);
+```

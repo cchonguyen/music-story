@@ -153,6 +153,16 @@ def main(argv: list[str]) -> int:
     if len(argv) != 1:
         print("usage: python -m pipeline.site_data <name> | --parquet <view>", file=sys.stderr)
         return 2
+    if argv[0] == "track_genre_sheet":
+        from pipeline import track_sheet
+
+        con = _site_con(None)
+        try:
+            rows = track_sheet.rows(con)
+        finally:
+            con.close()
+        json.dump(rows, sys.stdout, default=_json_default)
+        return 0
     if argv[0] == "artist_genre_sheet":
         from pipeline import artist_sheet
 
