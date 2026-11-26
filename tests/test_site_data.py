@@ -106,3 +106,12 @@ def test_genre_xray_keys_are_unique():
     xray_rows = json.loads(xray_path.read_text())
     keys = [(r["artist_norm"], r["title_norm"], r["parent_genre"], r["style"]) for r in xray_rows]
     assert len(keys) == len(set(keys))
+
+
+def test_artist_genre_sheet_loader_prints_rows(fixture_db_path, capsys):
+    from pipeline.site_data import main
+
+    assert main(["artist_genre_sheet"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert rows and set(rows[0]) == {"artist_key", "artist", "plays", "parent_genre", "style", "share", "source"}
+    assert all(r["plays"] >= 3 for r in rows)

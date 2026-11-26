@@ -251,3 +251,44 @@ Plot.plot({
 ```js
 Inputs.table(remixTotals)
 ```
+
+## Artist genre sheet
+
+Every artist with at least 3 plays, with every genre and its share. Edit the CSV outside the site, then import it on the Mac with `uv run python -m pipeline.artist_sheet import <file>`. Imported genres become the artist's genres in the database.
+
+```js
+const sheetRows = await FileAttachment("data/artist_genre_sheet.json").json();
+
+// RFC 4180 cell quoting. Blank values become empty cells.
+const csvCell = (v) => {
+  if (v == null) return "";
+  const s = String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+// Header and one line per artist-genre row, same columns the pipeline writes.
+const sheetCsv = (rows) => {
+  const head = ["artist_key", "artist", "plays", "parent_genre", "style", "share", "source"];
+  const lines = rows.map((r) =>
+    [r.artist_key, r.artist, r.plays, r.parent_genre, r.style, r.share, r.source].map(csvCell).join(",")
+  );
+  return [head.join(","), ...lines].join("\n") + "\n";
+};
+
+const sheetButton = Inputs.button("Export CSV", {
+  reduce: () => {
+    const blob = new Blob([sheetCsv(sheetRows)], {type: "text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "artist_genre_sheet.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+});
+display(sheetButton);
+```
+
+```js
+display(html`<p>${sheetRows.length.toLocaleString()} rows, ${new Set(sheetRows.map((r) => r.artist_key)).size.toLocaleString()} artists.</p>`);
+```
