@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { syncAgents, pullFromHub, compileRuntimePayloads, mapAntigravityModel, parseFrontmatter } from './hub-sync.mjs';
+import { syncAgents, pullFromHub, compileRuntimePayloads, mapAntigravityModel, parseFrontmatter, cloneHub, needsRerun, CALLER_WORKFLOWS } from './hub-sync.mjs';
 
 function makeTempDir(prefix = 'hub-sync-test-') {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -172,19 +173,48 @@ test('pullFromHub pulls .harness/agents and synchronizes into .claude/agents and
   fs.rmSync(spokeRoot, { recursive: true, force: true });
 });
 
+test('pullFromHub records the hash of the runtime-payloads.json compiled in the spoke', () => {
+  const hubRoot = makeTempDir('hub-');
+  const spokeRoot = makeTempDir('spoke-');
+  const hubAgentsDir = path.join(hubRoot, '.harness', 'agents');
+  fs.mkdirSync(hubAgentsDir, { recursive: true });
+  fs.writeFileSync(path.join(hubAgentsDir, 'gf-coder.md'), '---\nname: gf-coder\nmodel: haiku\n---\nBody\n');
+  // A stale hub copy that differs from what the spoke compiles.
+  fs.writeFileSync(path.join(hubAgentsDir, 'runtime-payloads.json'), '{"stale": true}\n');
+  fs.mkdirSync(path.join(hubRoot, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(hubRoot, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: [], deny: [] } }));
+  fs.writeFileSync(path.join(hubRoot, '.harness-version'), '4.0.0\n');
+
+  pullFromHub(hubRoot, spokeRoot);
+
+  const payloadPath = path.join(spokeRoot, '.harness', 'agents', 'runtime-payloads.json');
+  const compiled = fs.readFileSync(payloadPath);
+  assert.notEqual(compiled.toString(), '{"stale": true}\n');
+  const manifest = JSON.parse(fs.readFileSync(path.join(spokeRoot, '.harness', 'managed.json'), 'utf8'));
+  const expected = crypto.createHash('sha256').update(compiled).digest('hex');
+  assert.equal(manifest.files['.harness/agents/runtime-payloads.json'], expected);
+
+  fs.rmSync(hubRoot, { recursive: true, force: true });
+  fs.rmSync(spokeRoot, { recursive: true, force: true });
+});
+
 test('mapAntigravityModel maps model strings accurately', () => {
-  assert.equal(mapAntigravityModel('haiku'), 'flash');
-  assert.equal(mapAntigravityModel('claude-3-5-haiku-20241022'), 'flash');
+  assert.equal(mapAntigravityModel('haiku'), 'inherit');
+  assert.equal(mapAntigravityModel('claude-3-5-haiku-20241022'), 'inherit');
+  assert.equal(mapAntigravityModel('hydrogen'), 'inherit');
+  assert.equal(mapAntigravityModel('inherit'), 'inherit');
   assert.equal(mapAntigravityModel('flash'), 'flash');
   assert.equal(mapAntigravityModel('gemini-2.5-flash'), 'flash');
+  assert.equal(mapAntigravityModel('flash_lite'), 'flash_lite');
+  assert.equal(mapAntigravityModel('gemini-2.5-flash-lite'), 'flash_lite');
   assert.equal(mapAntigravityModel('opus'), 'pro');
   assert.equal(mapAntigravityModel('claude-3-opus-20240229'), 'pro');
   assert.equal(mapAntigravityModel('pro'), 'pro');
   assert.equal(mapAntigravityModel('gemini-2.5-pro'), 'pro');
   assert.equal(mapAntigravityModel('sonnet'), 'pro');
   assert.equal(mapAntigravityModel('claude-3-7-sonnet'), 'pro');
-  assert.equal(mapAntigravityModel(''), 'flash');
-  assert.equal(mapAntigravityModel(null), 'flash');
+  assert.equal(mapAntigravityModel(''), 'inherit');
+  assert.equal(mapAntigravityModel(null), 'inherit');
   assert.equal(mapAntigravityModel('custom-model'), 'custom-model');
 });
 
@@ -235,6 +265,19 @@ You are Tier 3 Coder.
 `
   );
 
+  fs.writeFileSync(
+    path.join(harnessAgents, 'gf-flash.md'),
+    `---
+name: gf-flash
+description: Explicit Flash override
+model: haiku
+antigravity_model: flash
+tools: Read
+---
+You use Flash explicitly.
+`
+  );
+
   const payloads = compileRuntimePayloads(root);
 
   const expectedPayloadsPath = path.join(harnessAgents, 'runtime-payloads.json');
@@ -255,9 +298,13 @@ You are Tier 3 Coder.
   assert.equal(payloads['gf-coder'].name, 'gf-coder');
   assert.equal(payloads['gf-coder'].description, 'Tier 3 Code Implementer');
   assert.equal(payloads['gf-coder'].model, 'haiku');
-  assert.equal(payloads['gf-coder'].antigravity_model, 'flash');
+  assert.equal(payloads['gf-coder'].antigravity_model, 'inherit');
   assert.deepEqual(payloads['gf-coder'].tools, ['Read', 'Edit', 'Write', 'Bash']);
   assert.equal(payloads['gf-coder'].systemPrompt, 'You are Tier 3 Coder.');
+
+  assert.ok(payloads['gf-flash']);
+  assert.equal(payloads['gf-flash'].model, 'haiku');
+  assert.equal(payloads['gf-flash'].antigravity_model, 'flash');
 
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -272,10 +319,22 @@ test('syncAgents generates runtime-payloads.json alongside copied templates', ()
     `---
 name: gf-verifier
 description: Ephemeral Verifier
-model: flash
+model: haiku
 tools: Read, Bash
 ---
 You are Verifier.
+`
+  );
+
+  fs.writeFileSync(
+    path.join(harnessAgents, 'gf-flash-verifier.md'),
+    `---
+name: gf-flash-verifier
+description: Explicit Flash Verifier
+model: flash
+tools: Read, Bash
+---
+You are Flash Verifier.
 `
   );
 
@@ -284,7 +343,119 @@ You are Verifier.
   const payloadsFile = path.join(harnessAgents, 'runtime-payloads.json');
   assert.ok(fs.existsSync(payloadsFile));
   const data = JSON.parse(fs.readFileSync(payloadsFile, 'utf8'));
-  assert.equal(data['gf-verifier'].antigravity_model, 'flash');
+  assert.equal(data['gf-verifier'].antigravity_model, 'inherit');
+  assert.equal(data['gf-flash-verifier'].antigravity_model, 'flash');
 
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('pullFromHub overwrites a differing spoke copy of a CI caller workflow', () => {
+  const hubRoot = makeTempDir('hub-');
+  const spokeRoot = makeTempDir('spoke-');
+  const hubWorkflows = path.join(hubRoot, '.harness', 'templates', 'workflows');
+  fs.mkdirSync(hubWorkflows, { recursive: true });
+  fs.writeFileSync(path.join(hubWorkflows, 'harness-slice-gate.yml'), 'name: gate v2\n');
+  fs.mkdirSync(path.join(spokeRoot, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(spokeRoot, '.github', 'workflows', 'harness-slice-gate.yml'), 'name: gate v1\n');
+  fs.writeFileSync(path.join(hubRoot, '.harness-version'), '4.0.0\n');
+
+  const { receipt } = pullFromHub(hubRoot, spokeRoot);
+
+  assert.equal(fs.readFileSync(path.join(spokeRoot, '.github', 'workflows', 'harness-slice-gate.yml'), 'utf8'), 'name: gate v2\n');
+  assert.ok(receipt.written.includes('.github/workflows/harness-slice-gate.yml (CI caller, refreshed)'));
+
+  fs.rmSync(hubRoot, { recursive: true, force: true });
+  fs.rmSync(spokeRoot, { recursive: true, force: true });
+});
+
+test('pullFromHub does not overwrite a differing spoke copy of a non-caller workflow', () => {
+  const hubRoot = makeTempDir('hub-');
+  const spokeRoot = makeTempDir('spoke-');
+  const hubWorkflows = path.join(hubRoot, '.harness', 'templates', 'workflows');
+  fs.mkdirSync(hubWorkflows, { recursive: true });
+  fs.writeFileSync(path.join(hubWorkflows, 'harness-pr-check.yml'), 'name: pr check v2\n');
+  fs.mkdirSync(path.join(spokeRoot, '.github', 'workflows'), { recursive: true });
+  fs.writeFileSync(path.join(spokeRoot, '.github', 'workflows', 'harness-pr-check.yml'), 'name: pr check spoke\n');
+  fs.writeFileSync(path.join(hubRoot, '.harness-version'), '4.0.0\n');
+
+  const { receipt } = pullFromHub(hubRoot, spokeRoot);
+
+  assert.equal(fs.readFileSync(path.join(spokeRoot, '.github', 'workflows', 'harness-pr-check.yml'), 'utf8'), 'name: pr check spoke\n');
+  assert.ok(!receipt.written.some((entry) => entry.startsWith('.github/workflows/harness-pr-check.yml')));
+
+  fs.rmSync(hubRoot, { recursive: true, force: true });
+  fs.rmSync(spokeRoot, { recursive: true, force: true });
+});
+
+test('CALLER_WORKFLOWS lists the gate and telemetry callers', () => {
+  assert.deepEqual([...CALLER_WORKFLOWS].sort(), ['harness-slice-gate.yml', 'harness-telemetry.yml']);
+});
+
+test('cloneHub returns null and never runs git when the hub has no owner', () => {
+  const root = path.join(makeTempDir(), 'project');
+  let calls = 0;
+  const result = cloneHub(root, { repo: 'claude-harness-hub', branch: 'main' }, () => { calls += 1; });
+  assert.equal(result, null);
+  assert.equal(calls, 0);
+});
+
+test('cloneHub clones the public hub into the sibling folder and returns that path', () => {
+  const parent = makeTempDir();
+  const root = path.join(parent, 'project');
+  const calls = [];
+  const result = cloneHub(root, { owner: 'example-owner', repo: 'claude-harness-hub', branch: 'dev' }, (args) => { calls.push(args); });
+  const dest = path.join(parent, 'claude-harness-hub');
+  assert.equal(result, dest);
+  assert.deepEqual(calls, [['clone', '--quiet', '--branch', 'dev', 'https://github.com/example-owner/claude-harness-hub.git', dest]]);
+  fs.rmSync(parent, { recursive: true, force: true });
+});
+
+test('cloneHub returns null when the clone throws', () => {
+  const parent = makeTempDir();
+  const result = cloneHub(path.join(parent, 'project'), { owner: 'example-owner', repo: 'claude-harness-hub' }, () => { throw new Error('network down'); });
+  assert.equal(result, null);
+  fs.rmSync(parent, { recursive: true, force: true });
+});
+
+test('needsRerun is true when the receipt wrote hub-sync.mjs and no rerun is active', () => {
+  assert.equal(needsRerun({ written: ['.harness/scripts/hub-sync.mjs'] }, {}), true);
+  assert.equal(needsRerun({ written: ['.harness/scripts/hub-sync.mjs'] }, { HUB_SYNC_RERUN: '0' }), true);
+});
+
+test('needsRerun is false when HUB_SYNC_RERUN is already 1', () => {
+  assert.equal(needsRerun({ written: ['.harness/scripts/hub-sync.mjs'] }, { HUB_SYNC_RERUN: '1' }), false);
+});
+
+test('needsRerun is false when hub-sync.mjs was not written', () => {
+  assert.equal(needsRerun({ written: ['.harness/scripts/other.mjs', '.github/workflows/harness-slice-gate.yml (CI caller, refreshed)'] }, {}), false);
+  assert.equal(needsRerun({ written: [] }, {}), false);
+});
+
+test('syncAgents adopts plugins/harness/agents as the source when the folder exists (Slice 20.2)', () => {
+  const root = makeTempDir();
+  const pluginAgents = path.join(root, 'plugins', 'harness', 'agents');
+  const harnessAgents = path.join(root, '.harness', 'agents');
+  fs.mkdirSync(pluginAgents, { recursive: true });
+  fs.mkdirSync(harnessAgents, { recursive: true });
+  fs.writeFileSync(path.join(pluginAgents, 'gf-coder.md'), 'plugin v2');
+  fs.writeFileSync(path.join(harnessAgents, 'gf-coder.md'), 'stale v1');
+
+  const synced = syncAgents(root);
+  assert.ok(synced.includes(path.join('.harness', 'agents', 'gf-coder.md')));
+  for (const dir of [harnessAgents, path.join(root, '.claude', 'agents'), path.join(root, '.agents')]) {
+    assert.equal(fs.readFileSync(path.join(dir, 'gf-coder.md'), 'utf8'), 'plugin v2', dir);
+  }
+  assert.deepEqual(syncAgents(root), []);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('hub agent copies match the plugin source (no drift)', () => {
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
+  const pluginAgents = path.join(repo, 'plugins', 'harness', 'agents');
+  for (const file of fs.readdirSync(pluginAgents).filter((f) => f.endsWith('.md'))) {
+    const source = fs.readFileSync(path.join(pluginAgents, file), 'utf8');
+    for (const dir of ['.harness/agents', '.claude/agents', '.agents']) {
+      assert.equal(fs.readFileSync(path.join(repo, dir, file), 'utf8'), source, `${dir}/${file} differs from plugins/harness/agents/${file}; run node .harness/scripts/hub-sync.mjs sync-agents`);
+    }
+  }
 });

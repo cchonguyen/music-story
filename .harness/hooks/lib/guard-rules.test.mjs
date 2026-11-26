@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agentsBlock, bashWriteReason, colourOf, isEngineLocked, isHubOrigin, isProtectedPath, nextContent, sliceIdOf,
+  agentsBlock, bashWriteReason, isEngineLocked, isHubOrigin, isProtectedPath, nextContent, sliceIdOf,
 } from './guard-rules.mjs';
 import {
   normalizeToolName, normalizeToolInput, normalizePayload
@@ -9,6 +9,7 @@ import {
 import {
   checkFastPathBudget, checkSearchBudget, checkTargetFileScope, isSourceFile, resolveRole
 } from '../pre-tool-guard.mjs';
+import { ACTIVE_TASK } from './vibe.mjs';
 import {
   validateProgressSlices
 } from '../el-exit-gate.mjs';
@@ -29,11 +30,9 @@ test('the AGENTS.md block is the text between the markers, markers included', ()
   assert.equal(agentsBlock('no block here'), '');
 });
 
-test('colour and slice identity are read from a slice line', () => {
+test('slice identity is read from a slice line', () => {
   const line = '- [ ] **Slice 3.3** [IN_PROGRESS] `[YELLOW][CORE / DATA]`: guard';
-  assert.equal(colourOf(line), 'YELLOW');
   assert.equal(sliceIdOf(line), '3.3');
-  assert.equal(colourOf('- [ ] **Slice 1** `[CORE / DATA]`'), null);
 });
 
 test('nextContent applies Write and Edit, including "$&" in replacement text', () => {
@@ -200,10 +199,12 @@ test('circuit breaker enforces 2-search limit for goldfish workers', () => {
   assert.equal(checkSearchBudget({ role: 'goldfish', telemetry: { goldfish_searches: 0 }, thresholds }).allowed, true);
   assert.equal(checkSearchBudget({ role: 'goldfish', telemetry: { goldfish_searches: 1 }, thresholds }).allowed, true);
 
-  // 3rd search blocked
-  const blocked = checkSearchBudget({ role: 'goldfish', telemetry: { goldfish_searches: 2 }, thresholds });
-  assert.equal(blocked.allowed, false);
-  assert.match(blocked.reason, /CIRCUIT BREAKER: Goldfish search budget exceeded/);
+  // 3rd search flagged as a warning: checkSearchBudget reports the overrun, but the hook
+  // only warns on stderr and logs goldfish_breaker_warn (exit 0), and the counter still increments.
+  const warned = checkSearchBudget({ role: 'goldfish', telemetry: { goldfish_searches: 2 }, thresholds });
+  assert.equal(warned.allowed, false);
+  assert.equal(warned.count, 3);
+  assert.match(warned.reason, /CIRCUIT BREAKER: Goldfish search budget exceeded/);
 });
 
 test('goldfish target locks block editing files outside active slice Target files', () => {
@@ -218,20 +219,23 @@ test('goldfish target locks block editing files outside active slice Target file
   // File outside allowed list blocked
   const blocked = checkTargetFileScope({ relTarget: 'unrelated/config.json', allowedTargets: allowed, role: 'goldfish' });
   assert.equal(blocked.allowed, false);
-  assert.match(blocked.reason, /SCOPE LOCK BLOCK/);
+  assert.match(blocked.reason, /SCOPE LOCK/);
 
-  // Hard State-File Lockout: gf-coder cannot touch PROGRESS.md, ATLAS.md, or HISTORY.md even if allowed
-  const blockedProgress = checkTargetFileScope({ relTarget: '.spec/PROGRESS.md', allowedTargets: allowed, role: 'goldfish' });
-  assert.equal(blockedProgress.allowed, false);
-  assert.match(blockedProgress.reason, /DENIED: gf-coder cannot modify \.spec\/PROGRESS\.md or Atlas state files/);
+  // State-file lockout disabled (owner approval, 2026-11-06): gf-coder may edit PROGRESS.md, ATLAS.md, HISTORY.md
+  // when they are in scope; the normal SCOPE LOCK still applies to files not listed.
+  const progressAllowed = checkTargetFileScope({ relTarget: '.spec/PROGRESS.md', allowedTargets: allowed, role: 'goldfish' });
+  assert.equal(progressAllowed.allowed, true);
+  assert.doesNotMatch(progressAllowed.reason ?? '', /DENIED: gf-coder cannot modify/);
 
-  const blockedAtlas = checkTargetFileScope({ relTarget: '.spec/ATLAS.md', allowedTargets: allowed, role: 'goldfish' });
-  assert.equal(blockedAtlas.allowed, false);
-  assert.match(blockedAtlas.reason, /DENIED: gf-coder cannot modify \.spec\/PROGRESS\.md or Atlas state files/);
+  const atlasAllowed = checkTargetFileScope({ relTarget: '.spec/ATLAS.md', allowedTargets: [...allowed, '.spec/ATLAS.md'], role: 'goldfish' });
+  assert.equal(atlasAllowed.allowed, true);
 
-  const blockedHistory = checkTargetFileScope({ relTarget: '.spec/archive/HISTORY.md', allowedTargets: allowed, role: 'goldfish' });
-  assert.equal(blockedHistory.allowed, false);
-  assert.match(blockedHistory.reason, /DENIED: gf-coder cannot modify \.spec\/PROGRESS\.md or Atlas state files/);
+  const historyAllowed = checkTargetFileScope({ relTarget: '.spec/archive/HISTORY.md', allowedTargets: [...allowed, '.spec/archive/HISTORY.md'], role: 'goldfish' });
+  assert.equal(historyAllowed.allowed, true);
+
+  const atlasOutOfScope = checkTargetFileScope({ relTarget: '.spec/ATLAS.md', allowedTargets: allowed, role: 'goldfish' });
+  assert.equal(atlasOutOfScope.allowed, false);
+  assert.match(atlasOutOfScope.reason, /SCOPE LOCK/);
 
   // Non-goldfish roles (e.g., coordinator) are permitted to update PROGRESS.md
   assert.equal(checkTargetFileScope({ relTarget: '.spec/PROGRESS.md', allowedTargets: allowed, role: 'coordinator' }).allowed, true);
@@ -245,6 +249,14 @@ test('role resolution identifies subagents vs coordinator', () => {
   assert.equal(resolveRole({}), 'coordinator');
   assert.equal(resolveRole({ agent_type: 'el-architect' }), 'elephant');
   assert.equal(resolveRole({ agent_type: 'gf-coder' }), 'goldfish');
+});
+
+test('role resolution never returns coordinator for subagent events (agent_id, plugin-prefixed agent_type)', () => {
+  assert.notEqual(resolveRole({ agent_id: 'x' }), 'coordinator');
+  assert.equal(resolveRole({ agent_id: 'x', agent_type: 'harness:gf-coder' }), 'goldfish');
+  assert.equal(resolveRole({ agent_type: 'harness:gf-coder' }), 'goldfish');
+  assert.equal(resolveRole({ agent_id: '' }), 'coordinator');
+  assert.equal(resolveRole({}), 'coordinator');
 });
 
 // --- Slice 4.3 Tests: el-architect Exit Gate ---
@@ -310,4 +322,10 @@ test('el exit gate open-only mode ignores completed slices', () => {
   const atlas = '| Coords: [1] |';
   assert.equal(validateProgressSlices(doneBad, atlas, { openOnly: true }).valid, validateProgressSlices(doneBad.split('\n')[1] + '\n', atlas).valid);
   assert.equal(validateProgressSlices(doneBad, atlas, { openOnly: true }).slicesCount, 1);
+});
+
+test('ACTIVE_TASK counts a marker only after the bold title or at line end', () => {
+  assert.equal(ACTIVE_TASK.test('- [ ] **Slice 1** [IN_PROGRESS] `[GREEN]`: x'), true);
+  assert.equal(ACTIVE_TASK.test('- [ ] **Slice 1** `[GREEN]`: x [IN_PROGRESS]'), true);
+  assert.equal(ACTIVE_TASK.test('- [ ] **Slice 2** [PENDING] `[GREEN]`: the parser counts [IN_PROGRESS] only after the title'), false);
 });

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { activeLines, ensureBaseline, resolveRoot } from './lib/vibe.mjs';
+import { ensureBaseline, resolveRoot } from './lib/vibe.mjs';
 import { branchOwnerOf, mainRedState, MAIN_RED_TAG, whereWeLeftOff } from './lib/session-signals.mjs';
-import { readBatchEvents } from '../scripts/status-batch.mjs';
+import { statePath, writeState } from './lib/doctor-state.mjs';
+import { currentHead, runProbes } from '../scripts/doctor.mjs';
+import { appendEvent } from '../scripts/lib/event-log.mjs';
+import { REPO_PLUGIN_MANIFEST, readManifestVersion, installedManifestPath, checkPluginVersion, mismatchBanner } from './lib/session-banner.mjs';
 
 const root = resolveRoot();
 const handoffPath = path.join(root, '.spec', 'SESSION_HANDOFF.md');
@@ -12,21 +15,21 @@ const telemetryPath = path.join(root, '.spec', '.session-telemetry.json');
 let event = {};
 try { event = JSON.parse(fs.readFileSync(0, 'utf8')); } catch {}
 
-// Reset session telemetry on session start / clear
+// Create session telemetry only when missing. An existing file is left alone (never reset).
 try {
-  fs.mkdirSync(path.dirname(telemetryPath), { recursive: true });
-  fs.writeFileSync(
-    telemetryPath,
-    JSON.stringify({
+  if (!fs.existsSync(telemetryPath)) {
+    fs.mkdirSync(path.dirname(telemetryPath), { recursive: true });
+    fs.writeFileSync(telemetryPath, JSON.stringify({
+      version: 1,
       sessionId: event.session_id || 'default',
       startedAt: new Date().toISOString(),
       totalToolCalls: 0,
       mutatingCallsOnSlice: 0,
       currentSlice: '',
-      slicesCommitted: 0
-    }, null, 2),
-    'utf8'
-  );
+      slicesCommitted: 0,
+      calls: []
+    }, null, 2), 'utf8');
+  }
 } catch {}
 
 // Vibe Mode baseline: snapshot the tree before any edit so --restore has something to go back to
@@ -34,8 +37,19 @@ try { ensureBaseline(root, event.session_id || 'default'); } catch {}
 
 let version = '3.1.0';
 try { version = fs.readFileSync(path.join(root, '.harness-version'), 'utf8').trim() || version; } catch {}
-const batchCount = readBatchEvents(root).length;
-let contextMsg = `✓ Harness v${version} active (Node ${process.version}, Model tier: Haiku baseline, Batch queue: ${batchCount} event(s)).`;
+let contextMsg = `✓ Harness v${version} active (Node ${process.version}).`;
+
+// Live doctor: run the probes now and store the result for the PreToolUse gate.
+try {
+  const head = currentHead(root);
+  const state = runProbes({ root, head });
+  writeState(statePath(), state);
+  contextMsg += state.status === 'DOCTOR_PASS'
+    ? `\n✓ DOCTOR_PASS (${state.checks.length} checks, HEAD ${head.slice(0, 7)})`
+    : `\n✖ DOCTOR_FAIL: ${state.failing.join(', ')}. Edits and Bash still run, with a warning, until doctor passes. Run node .harness/scripts/doctor.mjs.`;
+} catch {
+  contextMsg += '\n✖ DOCTOR_FAIL: doctor probes could not run. Edits and Bash still run, with a warning. Run node .harness/scripts/doctor.mjs.';
+}
 
 // Main-red (4.C.3): while the tag exists on origin, no new slices start. Fixing main is the only work.
 const redState = mainRedState(root);
@@ -45,21 +59,47 @@ if (redState === 'red') {
   contextMsg += `\n\nCould not check the ${MAIN_RED_TAG} tag on origin. Check it by hand before starting a slice.`;
 }
 
-// A live slice needs its handoff. In Vibe Mode a stale one would nudge /triage ceremony,
-// so only a handoff left by Google AI Studio is injected (that baton pass is fresh by definition).
+// The stale handoff text is not injected. Only the branch owner and resume pointer are kept.
 if (fs.existsSync(handoffPath)) {
   const handoff = fs.readFileSync(handoffPath, 'utf8').trim();
-  const fromAiStudio = /Last Active Platform:\**\s*Google AI Studio/i.test(handoff);
   const owner = branchOwnerOf(handoff);
   const resume = whereWeLeftOff(handoff);
   if (resume) contextMsg += `\n${resume}`;
-  if (owner) {
-    contextMsg += `\n\nBranch Owner: ${owner}. ${owner === 'antigravity' ? 'Claude must not push to this branch; open a new branch or comment on the PR.' : 'Claude owns this branch.'}`;
-  }
-  if (handoff && (activeLines(root).length > 0 || fromAiStudio)) {
-    contextMsg += `\n\n[AUTO-INJECTED SESSION HANDOFF]:\n${handoff}`;
-  }
+  if (owner) contextMsg += `\n\nBranch Owner: ${owner}.`;
 }
+
+// Plugin-version check: a warning banner only. Never blocks and never changes the exit code.
+const sessionId = event.session_id || 'default';
+let installedPluginVersion = null;
+try {
+  const installedFile = installedManifestPath(process.env.CLAUDE_PLUGIN_ROOT);
+  installedPluginVersion = installedFile ? readManifestVersion(installedFile) : null;
+  const check = checkPluginVersion({
+    installed: installedPluginVersion,
+    repo: readManifestVersion(path.join(root, REPO_PLUGIN_MANIFEST))
+  });
+  if (check.mismatch) {
+    const banner = mismatchBanner(check);
+    contextMsg = `${banner}\n${contextMsg}`;
+    process.stderr.write(`${banner}\n`);
+    appendEvent(root, {
+      session: sessionId,
+      kind: 'plugin_version_mismatch',
+      source: 'session-start.mjs',
+      slice: null,
+      detail: { installed: check.installed, repo: check.repo }
+    });
+  }
+} catch {}
+
+// Heartbeat: one event per session start (appendEvent never throws).
+appendEvent(root, {
+  session: sessionId,
+  kind: 'heartbeat',
+  source: 'session-start.mjs',
+  slice: null,
+  detail: { harness: version, plugin: installedPluginVersion, node: process.version }
+});
 
 console.log(JSON.stringify({
   hookSpecificOutput: {
