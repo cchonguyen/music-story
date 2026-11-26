@@ -1,21 +1,60 @@
 # music-story
-A serverless, local-first analytics engine and interactive story exploring 19.5 years of personal listening telemetry using DuckDB, Python, and DuckDB-Wasm.
 
-## Setup (macOS)
-```sh
-brew install uv            # once
-uv sync                    # Python 3.12 + dependencies into .venv
-cp .env.example .env       # then fill DATA_DIR and API keys
-uv run python scripts/make_fixtures.py
-uv run pytest
+music-story is a local-first analytics engine and static story site built from a personal listening history. It uses DuckDB and Python to build the data, and Observable Framework to render the story site.
+
+## Status and license
+
+This is a personal project. All rights reserved; see `LICENSE`. No personal data is included in this repository.
+
+## What is not in this repo
+
+This repository does not contain:
+
+- The raw Spotify and Last.fm exports.
+- The databases.
+- The API cache.
+- API keys.
+- The deployed site's data.
+
+The deployed site is behind an access-control gate. It is not published.
+
+## Run with synthetic data
+
+Synthetic data needs no keys and no exports. Run these commands from the repository root:
+
+```bash
+brew install uv                                       # macOS; see the uv docs for other systems
+uv sync                                               # install Python 3.12 and the dependencies into .venv
+cp .env.example .env                                  # leave the values blank; fixtures need no keys
+uv run python scripts/make_fixtures.py                # generate the synthetic listening data
+uv run pytest                                         # run the Python tests
+uv run ruff check                                     # lint the Python code
+uv run python -m pipeline.build_pipeline --fixtures   # run the whole pipeline on synthetic data
 ```
 
-## Run
-```sh
-uv run python -m pipeline.build_pipeline --fixtures   # whole pipeline on synthetic data
-uv run python -m pipeline.build_pipeline              # real data -> build/music.duckdb
-uv run python -m pipeline.enrich fetch                # long API fetch, resumable
+## Build the site
+
+Node 18 or later is required. Run the lint step from the repository root, then build the site:
+
+```bash
+npm run lint                  # check the JavaScript config files
+cd site && npm ci && npm run build   # install site dependencies and build; output is written to site/dist
 ```
 
-The raw exports, every database and the API cache stay on your machine. Only code and the
-sanitised site data are committed. See `CLAUDE.md` for working rules and `STATE.md` for progress.
+## Real data and API keys
+
+Real runs need your own exports. Place them where you like, then set `DATA_DIR` in `.env` to point at them.
+
+API keys go in `.env`. These cover Last.fm, Spotify, a MusicBrainz contact address, Gemini, and Discogs. `.env.example` lists the variable names. Do not commit `.env`.
+
+Enrichment is resumable and rate-limited, so an interrupted run can be restarted without losing finished work.
+
+## Deployment
+
+The site is deployed as Cloudflare Workers static assets, configured in `wrangler.jsonc`. The route in that file is a placeholder for your own domain. Enable Cloudflare Access before any deploy.
+
+## Project docs
+
+- `CLAUDE.md`: working rules for contributors and coding agents.
+- `STATE.md`: current progress.
+- `docs/PROJECT.md`: decision log.

@@ -41,7 +41,7 @@ Measured facts:
 | 5 or more | 6,064 | 64% | 68% |
 | 10 or more | 2,817 | 48% | 52% |
 
-Timezone: home zone, so plays use America/Los_Angeles. A non-US
+Timezone: the home zone is America/Los_Angeles, so plays use it. A non-US
 `conn_country` maps to its IANA zone through `data/country_tz.csv`; CA is guessed as
 America/Vancouver.
 
