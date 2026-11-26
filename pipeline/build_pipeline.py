@@ -37,6 +37,7 @@ STEPS = [
     ("04", "W7", "py", "pipeline.dims"),
     ("05", "W8", "sql", "05_sessions.sql"),
     ("06", "W9", "py", "pipeline.genre"),
+    ("06b", "W15", "py", "pipeline.track_sheet"),  # track and artist edits over the automatic track genres
     ("07", "W5/W6", "sql", "marts"),  # every sql/marts/*.sql, in name order
 ]
 
