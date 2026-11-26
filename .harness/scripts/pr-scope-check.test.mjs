@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze, formatJsonVerdict, parseDiff, parseNameStatus, isCommentLine, ASSERTION, SKIP_MARK, isPackageJsonVersionOnly, isAdditiveSupabaseMigration } from './pr-scope-check.mjs';
+import { analyze, formatJsonVerdict, parseDiff, parseNameStatus, isCommentLine, ASSERTION, SKIP_MARK, isPackageJsonVersionOnly, isAdditiveSupabaseMigration, isTemplateCopy, parseActiveTargets, sliceKey, approvalRef } from './pr-scope-check.mjs';
+import { AGENTS_MARKERS } from './lib/sync-core.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(here, 'pr-scope-check.mjs');
@@ -520,4 +521,224 @@ test('strict: other workflow files still trip the CI workflow tripwire', () => {
 test('strict: other engine files still count as spoke changes to the hub-owned engine', () => {
   const r = analyze({ changed: ['.harness/scripts/pr-scope-check.mjs'], strict: true, hubSync: false });
   assert.ok(r.problems.some((p) => p.includes('Spoke changed an engine file') && p.includes('pr-scope-check.mjs')));
+});
+
+test('a stale [IN_PROGRESS] placeholder with no changed targets does not block a done slice in the PR', () => {
+  // finish-slice promoted the next slice (targets src/next/). This PR finishes Slice 9 (targets src/foo.js).
+  const doneLine = '- [x] **Slice 9** `[YELLOW][CORE / DATA]`: thing — Target files: `src/foo.js`, `src/foo.test.js`';
+  const nextLine = '- [ ] **Slice 10** [IN_PROGRESS] `[GREEN][CORE / DATA]`: next — Target files: `src/next/x.js`';
+  const diff = new Map([['.spec/PROGRESS.md', { added: [doneLine, nextLine], removed: [] }]]);
+  const r = analyze({
+    changed: ['.spec/PROGRESS.md', 'src/foo.js', 'src/foo.test.js'],
+    diff: new Map([...diff, ['src/foo.js', { added: [], removed: [] }], ['src/foo.test.js', { added: ['expect(1).toBe(1);'], removed: [] }]]),
+    progress: doneLine + '\n' + nextLine + '\n',
+  });
+  assert.equal(r.sliceType, 'CORE / DATA');
+  assert.ok(!r.problems.some((p) => p.includes("Outside the slice's Target files")), r.problems.join('; '));
+  assert.ok(r.notes.some((n) => n.includes('no changed Target files')));
+});
+
+test('a placeholder that lists .spec/PROGRESS.md is not taken as touched by a done slice PR', () => {
+  // Concert-Tracker PR #262: the promoted next slice lists .spec/PROGRESS.md, which every slice PR changes.
+  const doneLine = '- [x] **Slice 9.1** `[CORE / DATA]` : thing. Target files: `src/foo.js`, `src/foo.test.js`, `.spec/PROGRESS.md`';
+  const nextLine = '- [ ] **Slice 9.2** [IN_PROGRESS] `[UI / VISUAL]` : next. Target files: `src/next/x.tsx`, `.spec/PROGRESS.md`';
+  const r = analyze({
+    changed: ['.spec/PROGRESS.md', 'src/foo.js', 'src/foo.test.js'],
+    diff: new Map([
+      ['.spec/PROGRESS.md', { added: [doneLine, nextLine], removed: [] }],
+      ['src/foo.js', { added: [], removed: [] }],
+      ['src/foo.test.js', { added: ['assert.equal(1, 1);'], removed: [] }],
+    ]),
+    progress: doneLine + '\n' + nextLine + '\n',
+  });
+  assert.equal(r.sliceType, 'CORE / DATA');
+  assert.ok(!r.problems.some((p) => p.includes("Outside the slice's Target files")), r.problems.join('; '));
+});
+
+test('an [IN_PROGRESS] slice whose targets this PR changes still blocks out-of-scope files', () => {
+  const activeLine = '- [ ] **Slice 10** [IN_PROGRESS] `[GREEN][CORE / DATA]`: next — Target files: `src/next/x.js`';
+  const r = analyze({
+    changed: ['src/next/x.js', 'src/other.js'],
+    diff: new Map([['src/next/x.js', { added: ['expect(1).toBe(1);'], removed: [] }], ['src/other.js', { added: [], removed: [] }]]),
+    progress: activeLine + '\n',
+  });
+  assert.ok(r.problems.some((p) => p.includes("Outside the slice's Target files: src/other.js")));
+});
+
+test('a verified hub sync is not flagged as outside an [IN_PROGRESS] slice targets', () => {
+  const activeLine = '- [ ] **Slice 8.7** [IN_PROGRESS] `[GREEN][CORE / DATA]`: next — Target files: `src/next/x.js`';
+  const changed = ['.harness/scripts/pr-scope-check.mjs', '.harness/managed.json'];
+  const r = analyze({
+    changed,
+    diff: new Map(changed.map((f) => [f, { added: [], removed: [] }])),
+    progress: activeLine + '\n',
+    strict: true,
+    hubSync: true,
+  });
+  assert.ok(!r.problems.some((p) => p.includes("Outside the slice's Target files")), r.problems.join('; '));
+});
+
+test('a hub-sync PR that also changes a non-engine file is still flagged outside the slice targets', () => {
+  const activeLine = '- [ ] **Slice 8.7** [IN_PROGRESS] `[GREEN][CORE / DATA]`: next — Target files: `src/next/x.js`';
+  const changed = ['.harness/scripts/pr-scope-check.mjs', '.harness/managed.json', 'src/other.js'];
+  const r = analyze({
+    changed,
+    diff: new Map(changed.map((f) => [f, { added: [], removed: [] }])),
+    progress: activeLine + '\n',
+    strict: true,
+    hubSync: true,
+  });
+  assert.ok(r.problems.some((p) => p.includes("Outside the slice's Target files: src/other.js")));
+});
+
+test('isTemplateCopy is true only for a workflow identical to its hub template', () => {
+  const WF = '.github/workflows/harness-labels.yml';
+  const TPL = '.harness/templates/workflows/harness-labels.yml';
+  const files = (m) => (p) => (p in m ? m[p] : null);
+  assert.equal(isTemplateCopy(WF, files({ [WF]: 'a', [TPL]: 'a' })), true);
+  assert.equal(isTemplateCopy(WF, files({ [WF]: 'a', [TPL]: 'b' })), false);
+  assert.equal(isTemplateCopy(WF, files({ [WF]: 'a' })), false);
+  assert.equal(isTemplateCopy('src/app.ts', files({ 'src/app.ts': 'a', '.harness/templates/workflows/app.ts': 'a' })), false);
+  assert.equal(isTemplateCopy(WF, null), false);
+});
+
+test('analyze: template-copy workflow is not a tripwire; a differing workflow is', () => {
+  const WF = '.github/workflows/harness-labels.yml';
+  const TPL = '.harness/templates/workflows/harness-labels.yml';
+  const run = (text) => analyze({ changed: [WF], readHead: (p) => ({ [WF]: text, [TPL]: 'a' })[p] ?? null });
+  const same = run('a');
+  assert.equal(same.tripwireFired, false);
+  assert.ok(same.notes.some((n) => n.includes('Sync-delivered harness file')));
+  assert.equal(run('b').tripwireFired, true);
+});
+
+test('parseActiveTargets reads the "| Target files:" and "— Target files:" forms', () => {
+  const pipe = '- [ ] **Slice 1.2: T** [IN_PROGRESS] [CORE / DATA] desc | Target files: a.js, ./b.js, `c.js` [NEW] | Verify: npm test';
+  assert.deepEqual(parseActiveTargets(pipe), ['a.js', 'b.js', 'c.js']);
+  const dash = '- [ ] **Slice 1.3: T** [IN_PROGRESS] [UI / VISUAL] desc — Target files: x.js, y/z.js';
+  assert.deepEqual(parseActiveTargets(dash), ['x.js', 'y/z.js']);
+  assert.deepEqual(parseActiveTargets(''), []);
+});
+
+test('Approved-Tripwire trailer: a listed path is approved, an unlisted one still fires', () => {
+  const msg = 'fix thing\n\nApproved-Tripwire: AGENTS.md\n';
+  const ok = analyze({ changed: ['AGENTS.md'], headMessage: msg });
+  assert.equal(ok.tripwireFired, false);
+  assert.ok(!ok.problems.some((p) => p.includes('Red tripwire')));
+  assert.ok(ok.notes.includes('Approved tripwire (AGENTS.md): AGENTS.md — approved by Approved-Tripwire trailer'));
+  const bad = analyze({ changed: ['AGENTS.md', 'db/schema.sql'], headMessage: msg });
+  assert.equal(bad.tripwireFired, true);
+  assert.ok(bad.problems.includes('Red tripwire (schema file): db/schema.sql'));
+});
+
+test('Approved-Tripwire trailer: multiple trailers and deleted files', () => {
+  const msg = 'x\n\nApproved-Tripwire: AGENTS.md\nApproved-Tripwire: old/auth.js\n';
+  const r = analyze({ changed: ['AGENTS.md'], deleted: ['old/auth.js'], headMessage: msg });
+  assert.equal(r.tripwireFired, false);
+  assert.equal(r.notes.filter((n) => n.startsWith('Approved tripwire')).length, 2);
+  assert.equal(analyze({ changed: ['AGENTS.md'], deleted: ['other.js'], headMessage: msg }).tripwireFired, true);
+});
+
+test('AGENTS.md line cap ignores the harness block; spoke-owned lines still count', () => {
+  const thresholds = { line_budgets: { soft_caps: { 'AGENTS.md': 40 } } };
+  const lines = (n, p) => Array.from({ length: n }, (_, i) => `${p} ${i}`);
+  const [S, E] = AGENTS_MARKERS;
+  const build = (own, block) => [...lines(own, 'own'), S, ...lines(block - 2, 'blk'), E, ''].join('\n');
+  const fits = build(27, 40);
+  assert.equal(fits.split('\n').length - 1, 67);
+  const ok = analyze({ changed: ['AGENTS.md'], agentsBlockOnly: false, thresholds, fileContents: { 'AGENTS.md': fits }, headMessage: 'Approved-Tripwire: AGENTS.md' });
+  assert.ok(!ok.problems.some((p) => p.includes('Line budget')));
+  const over = analyze({ changed: ['AGENTS.md'], thresholds, fileContents: { 'AGENTS.md': build(45, 40) }, headMessage: 'Approved-Tripwire: AGENTS.md' });
+  assert.ok(over.problems.some((p) => p.includes('AGENTS.md has 45 lines')));
+});
+
+test('sliceKey ignores the slice number so a renumbered line keeps its key', () => {
+  assert.equal(sliceKey('- [x] **Slice 2.17: A** x'), sliceKey('- [x] **Slice 2.18: A** x'));
+  assert.equal(sliceKey('- [x] **Slice 2.17: A** x'), '- [x] **Slice: A** x');
+});
+
+test('a PR that only renumbers a done CORE / DATA line does not trigger the CORE / DATA test rule', () => {
+  const uiLine = '- [x] **Slice 3: UI** `[UI / VISUAL]`: thing — Target files: `src/ui/x.tsx`';
+  const oldLine = '- [x] **Slice 2.17: A** `[CORE / DATA]`: thing — Target files: `src/a.js`';
+  const newLine = '- [x] **Slice 2.18: A** `[CORE / DATA]`: thing — Target files: `src/a.js`';
+  const diff = new Map([['.spec/PROGRESS.md', { added: [newLine], removed: [oldLine] }]]);
+  const r = analyze({
+    changed: ['.spec/PROGRESS.md', 'src/ui/x.tsx'],
+    diff,
+    progress: uiLine + '\n' + newLine + '\n',
+  });
+  assert.equal(r.sliceType, null);
+  assert.ok(!r.problems.some((p) => p.includes('needs a test file change')), r.problems.join('; '));
+});
+
+test('a PR that turns a pending CORE / DATA slice into [x] with no test change is still a problem', () => {
+  const activeLine = '- [ ] **Slice 5: A** [IN_PROGRESS] `[CORE / DATA]`: thing — Target files: `src/foo.js`';
+  const doneLine = '- [x] **Slice 5: A** `[CORE / DATA]`: thing — Target files: `src/foo.js`';
+  const diff = new Map([['.spec/PROGRESS.md', { added: [doneLine], removed: [activeLine] }]]);
+  const r = analyze({
+    changed: ['.spec/PROGRESS.md', 'src/foo.js'],
+    diff,
+    progress: doneLine + '\n',
+  });
+  assert.equal(r.sliceType, 'CORE / DATA');
+  assert.ok(r.problems.some((p) => p.includes('needs a test file change')), r.problems.join('; '));
+});
+
+test('a docs .md file outside Target files is allowed with a note; AGENTS.md is not', () => {
+  const activeLine = '- [ ] **Slice 6** [IN_PROGRESS] `[UI / VISUAL]`: thing — Target files: `src/foo.js`';
+  const docs = analyze({
+    changed: ['src/foo.js', 'docs/architecture/02-stage-1-capture-and-details.md'],
+    progress: activeLine + '\n',
+  });
+  assert.ok(!docs.problems.some((p) => p.includes('Outside the slice')), docs.problems.join('; '));
+  assert.ok(docs.notes.includes('Docs file outside Target files (allowed): docs/architecture/02-stage-1-capture-and-details.md'));
+
+  const agents = analyze({
+    changed: ['src/foo.js', 'AGENTS.md'],
+    progress: activeLine + '\n',
+  });
+  assert.ok(agents.problems.some((p) => p.includes("Outside the slice's Target files: AGENTS.md")));
+  assert.ok(!agents.notes.some((n) => n.includes('Docs file outside Target files (allowed): AGENTS.md')));
+});
+
+test('a test file outside Target files is allowed with a note', () => {
+  const activeLine = '- [ ] **Slice 7** [IN_PROGRESS] `[UI / VISUAL]`: thing — Target files: `src/foo.js`';
+  const r = analyze({
+    changed: ['src/foo.js', 'src/other.test.js'],
+    diff: testDiff('src/other.test.js', ['expect(1).toBe(1);']),
+    progress: activeLine + '\n',
+  });
+  assert.ok(!r.problems.some((p) => p.includes('Outside the slice')), r.problems.join('; '));
+  assert.ok(r.notes.includes('Test file outside Target files (allowed): src/other.test.js'));
+});
+
+test('approvalRef reads a merge commit\'s second parent and leaves an ordinary commit alone', () => {
+  assert.equal(approvalRef('HEAD', 'aaa bbb ccc\n'), 'HEAD^2');
+  assert.equal(approvalRef('HEAD', 'aaa bbb\n'), 'HEAD');
+  assert.equal(approvalRef('HEAD', ''), 'HEAD');
+});
+
+test('CLI finds Approved-Tripwire on the PR head when HEAD is a CI merge commit', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-merge-'));
+  const g = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  g('init', '-q', '-b', 'main');
+  g('config', 'user.email', 't@example.com');
+  g('config', 'user.name', 't');
+  fs.mkdirSync(path.join(dir, 'docs'));
+  fs.writeFileSync(path.join(dir, 'docs', 'old.md'), 'x\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'base');
+  g('checkout', '-q', '-b', 'pr');
+  fs.rmSync(path.join(dir, 'docs', 'old.md'));
+  g('add', '-A');
+  g('commit', '-q', '-m', 'remove old\n\nApproved-Tripwire: docs/old.md');
+  g('checkout', '-q', 'main');
+  fs.writeFileSync(path.join(dir, 'other.txt'), 'y\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'main moves on');
+  g('checkout', '-q', '--detach', 'main');
+  g('merge', '-q', '--no-ff', '-m', 'Merge pr into main', 'pr');
+  const res = spawnSync('node', [SCRIPT, 'main', 'HEAD', '--strict'], { cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  assert.match(res.stdout, /Approved tripwire \(file deleted\): docs\/old\.md/);
+  assert.doesNotMatch(res.stdout, /Red tripwire/);
 });

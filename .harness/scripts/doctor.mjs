@@ -1,0 +1,174 @@
+#!/usr/bin/env node
+// Live doctor (Slice 10.1). Runs probes, writes the session state the hooks gate on.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { checkFastPathBudget } from '../hooks/pre-tool-guard.mjs';
+import { isHubOrigin } from '../hooks/lib/guard-rules.mjs';
+import { readState, statePath, writeState } from '../hooks/lib/doctor-state.mjs';
+
+const CANARY_FILE = path.join('.spec', '.doctor-canary');
+
+const gitOut = (cwd, args) =>
+  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+
+export function currentHead(root) {
+  try { return gitOut(root, ['rev-parse', 'HEAD']); } catch { return ''; }
+}
+
+const check = (name, severity, ok, detail) => ({ name, severity, ok, detail });
+
+// A spoke is a repo with .harness-version whose origin is not the hub.
+function isSpokeRoot(root) {
+  let origin = '';
+  try { origin = gitOut(root, ['remote', 'get-url', 'origin']); } catch {}
+  return fs.existsSync(path.join(root, '.harness-version')) && !isHubOrigin(origin);
+}
+
+function probeFastPathBudget() {
+  const r = checkFastPathBudget({
+    role: 'coordinator',
+    toolName: 'Read',
+    targetFile: 'src/x.ts',
+    telemetry: { coordinator_reads: 3 },
+    thresholds: {},
+  });
+  const enforced = r.allowed === false;
+  return check('fast-path-budget', 'fail', enforced,
+    enforced ? 'coordinator source-read budget soft: warns and logs' : 'coordinator source-read budget NOT firing');
+}
+
+function probeGfCoder(root) {
+  // The plugin is installed from the hub's main branch, not synced into spokes, so spokes without
+  // a plugins/harness folder skip this probe. A spoke that does carry one must still have gf-coder.
+  if (isSpokeRoot(root) && !fs.existsSync(path.join(root, 'plugins', 'harness'))) {
+    return check('gf-coder-registered', 'skip', true, 'spoke: harness plugin is installed from the hub, not synced');
+  }
+  const ok = fs.existsSync(path.join(root, 'plugins', 'harness', 'agents', 'gf-coder.md'));
+  if (ok) return check('gf-coder-registered', 'fail', true, 'plugins/harness/agents/gf-coder.md present');
+  // The hub sync no longer ships plugins/harness to spokes; the cloud setup script installs the plugin there.
+  const isSpoke = fs.existsSync(path.join(root, '.harness-version'));
+  const pluginNotSynced = !fs.existsSync(path.join(root, 'plugins', 'harness'));
+  if (isSpoke && pluginNotSynced) {
+    return check('gf-coder-registered', 'fail', true, 'plugin not synced to this spoke; installed by the setup script');
+  }
+  return check('gf-coder-registered', 'fail', false, 'plugins/harness/agents/gf-coder.md missing');
+}
+
+function probeHandoff(root) {
+  const ok = fs.existsSync(path.join(root, '.spec', 'SESSION_HANDOFF.md'));
+  return check('handoff-fresh', 'warn', ok,
+    ok ? '.spec/SESSION_HANDOFF.md present' : '.spec/SESSION_HANDOFF.md missing');
+}
+
+function probeTelemetry(root) {
+  const dir = path.join(root, '.spec');
+  const tmp = path.join(dir, `.doctor-write-${process.pid}-${Date.now()}.tmp`);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(tmp, 'ok', 'utf8');
+    fs.rmSync(tmp, { force: true });
+    return check('telemetry-writable', 'fail', true, '.spec is writable');
+  } catch (err) {
+    try { fs.rmSync(tmp, { force: true }); } catch {}
+    return check('telemetry-writable', 'fail', false, `cannot write under .spec: ${err.message}`);
+  }
+}
+
+function probeEngineHash(root) {
+  const isSpoke = isSpokeRoot(root);
+  return check('spoke-engine-hash', 'skip', true,
+    isSpoke ? 'engine hash check not implemented yet' : 'not a spoke (no .harness-version or hub origin)');
+}
+
+function readPluginVersion(dir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, '.claude-plugin', 'plugin.json'), 'utf8')).version || '';
+  } catch {
+    return '';
+  }
+}
+
+// Warn-only: flags an installed plugin copy that differs from the repo's plugins/harness version.
+function probePluginCurrent(root) {
+  const repoVersion = readPluginVersion(path.join(root, 'plugins', 'harness'));
+  if (!repoVersion) return check('plugin-current', 'skip', true, 'no plugins/harness in this repo');
+  const installedDir = path.join(os.homedir(), '.claude', 'skills', 'harness');
+  const installed = readPluginVersion(installedDir);
+  if (installed === repoVersion) {
+    return check('plugin-current', 'warn', true, `installed plugin ${installed} matches repo`);
+  }
+  return check('plugin-current', 'warn', false,
+    `installed plugin ${installed || 'missing'}, repo ${repoVersion}: restart the session to load it`);
+}
+
+// Canary: a file naming probes forces those probes to fail. Operator deletes it after the live test.
+function applyCanary(root, checks) {
+  let text = '';
+  try { text = fs.readFileSync(path.join(root, CANARY_FILE), 'utf8'); } catch { return checks; }
+  const named = checks.filter((c) => text.includes(c.name));
+  const forced = checks.map((c) => (text.includes(c.name)
+    ? { ...c, ok: false, detail: 'CANARY: forced failure' }
+    : c));
+  const note = named.length
+    ? `forced failure: ${named.map((c) => c.name).join(', ')}`
+    : 'canary file present, names no probe';
+  return [...forced, check('canary', 'skip', true, note)];
+}
+
+export function runProbes({ root, head = '', env = process.env } = {}) {
+  const dir = root || process.cwd();
+  void env;
+  const base = [
+    probeFastPathBudget(),
+    probeGfCoder(dir),
+    probeHandoff(dir),
+    probeTelemetry(dir),
+    probeEngineHash(dir),
+    probePluginCurrent(dir),
+  ];
+  const checks = applyCanary(dir, base);
+  const failing = checks.filter((c) => c.severity === 'fail' && !c.ok).map((c) => c.name);
+  const warnings = checks.filter((c) => c.severity === 'warn' && !c.ok).map((c) => c.name);
+  return {
+    status: failing.length ? 'DOCTOR_FAIL' : 'DOCTOR_PASS',
+    failing,
+    warnings,
+    checks,
+    head,
+    at: new Date().toISOString(),
+  };
+}
+
+// Reuses the stored state when it was written for this HEAD. Otherwise probes and stores fresh state.
+export function ensureDoctorState({ root, head }) {
+  const file = statePath();
+  const existing = readState(file);
+  if (existing && existing.head === head) return existing;
+  let fresh;
+  try {
+    fresh = runProbes({ root, head });
+  } catch {
+    return existing;
+  }
+  try { writeState(file, fresh); } catch {}
+  return fresh;
+}
+
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
+  let root = process.cwd();
+  try { root = gitOut(process.cwd(), ['rev-parse', '--show-toplevel']); } catch {}
+  const head = currentHead(root);
+  const state = runProbes({ root, head });
+  writeState(statePath(), state);
+  for (const c of state.checks) {
+    const mark = c.severity === 'skip' ? '-' : c.ok ? 'OK' : c.severity === 'warn' ? 'WARN' : 'FAIL';
+    console.log(`${mark.padEnd(4)} ${c.name.padEnd(22)} ${c.detail}`);
+  }
+  const suffix = state.failing.length ? `: ${state.failing.join(', ')}` : '';
+  console.log(`${state.status}${suffix} (HEAD ${head.slice(0, 7) || 'unknown'})`);
+  process.exit(state.status === 'DOCTOR_PASS' ? 0 : 1);
+}
