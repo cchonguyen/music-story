@@ -1,11 +1,11 @@
 # W15: Track genre sheet (export and import)
 
-Status: draft, approved in principle by Charlie on 2026-11-26. Not built.
+Status: slice 1 implemented (2026-11-26).
 
 ## Goal
-Charlie exports one row per track, with title, artist and current genres, gives it to an AI agent to fill in genres, and imports the edited file. Imported track genres replace the automatic genres for those tracks.
+The user exports one row per track, with title, artist and current genres, gives it to an AI agent to fill in genres, and imports the edited file. Imported track genres replace the automatic genres for those tracks.
 
-## Decisions (from Charlie, 2026-11-26)
+## Decisions (2026-11-26)
 - Scope: tracks with 3 or more plays.
 - Import fully replaces the automatic genre for each track it lists. Tracks not in the file keep their automatic genre.
 - An artist's genre edits (the W14 artist sheet) carry down to that artist's tracks that have no track-level edit.

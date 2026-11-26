@@ -15,10 +15,6 @@ to automatic genres is not supported yet.
 from __future__ import annotations
 
 import argparse
-import csv
-import io
-import math
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,6 +22,8 @@ from typing import Any
 import duckdb
 
 from pipeline import artist_sheet, config
+from pipeline import genre_sheet_common as common
+from pipeline.genre_sheet_common import Genre, Row, normalise
 
 MIN_PLAYS = 3
 DEFAULT_OVERRIDES: Path = (
@@ -36,29 +34,6 @@ DEFAULT_OVERRIDES: Path = (
 EXPORT_HEADER = ["track_id", "title", "artist", "plays", "parent_genre", "style", "share", "source"]
 OVERRIDE_HEADER = ["track_id", "parent_genre", "style", "share"]
 REQUIRED_COLUMNS = ("track_id", "parent_genre", "style", "share")
-SAME_TOLERANCE = 0.0005
-
-Genre = tuple[Any, Any, Any]
-Row = dict[str, Any]
-
-
-def _text(value: Any) -> str:
-    return "" if value is None else str(value).strip()
-
-
-def _share_of(row: Row) -> float | None:
-    raw = row.get("share")
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return None
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        return None
-    return value if math.isfinite(value) else None
-
-
-def _fmt_share(value: float) -> str:
-    return f"{round(float(value), 4):.4f}".rstrip("0").rstrip(".") or "0"
 
 
 def rows(con: duckdb.DuckDBPyConnection, min_plays: int = MIN_PLAYS) -> list[Row]:
@@ -97,76 +72,16 @@ ORDER BY t.plays DESC, t.track_id, share DESC NULLS LAST
 
 
 def to_csv(rows_in: list[Row]) -> str:
-    buf = io.StringIO()
-    writer = csv.writer(buf, lineterminator="\n")
-    writer.writerow(EXPORT_HEADER)
-    for r in rows_in:
-        share = r.get("share")
-        writer.writerow(
-            [
-                r["track_id"],
-                r["title"],
-                r["artist"],
-                int(r["plays"]),
-                _text(r.get("parent_genre")),
-                _text(r.get("style")),
-                "" if share is None else _fmt_share(share),
-                r["source"],
-            ]
-        )
-    return buf.getvalue()
+    return common.to_csv(rows_in, EXPORT_HEADER)
 
 
 def parse_csv(text: str) -> list[Row]:
-    reader = csv.DictReader(io.StringIO(text))
-    fields = reader.fieldnames or []
-    missing = [c for c in REQUIRED_COLUMNS if c not in fields]
-    if missing:
-        raise ValueError(f"missing column(s): {', '.join(missing)}")
-    return [{k: _text(v) for k, v in r.items() if k} for r in reader]
+    return common.parse_csv(text, REQUIRED_COLUMNS)
 
 
 def validate(groups: dict[str, list[Row]], con: duckdb.DuckDBPyConnection) -> list[str]:
-    """Check each track's rows. Rows with a blank or zero share are ignored, as they carry no genre weight.
-    The same style may appear under two parents, so duplicates are checked on the (parent, style) pair."""
     known = {r[0] for r in con.execute("SELECT track_id FROM dim_track").fetchall()}
-    genres = artist_sheet._valid_genres(con)
-    errors: list[str] = []
-    for key, group in groups.items():
-        if key not in known:
-            errors.append(f"unknown track_id: {key or '(blank)'}")
-            continue
-        if any(not _text(r.get("style")) for r in group):
-            if len(group) > 1:
-                errors.append(f"{key}: a blank style must be the only row for the track (clears genres)")
-            continue
-        weighted = [r for r in group if (_share_of(r) or 0) > 0]
-        if not weighted:
-            errors.append(f"{key}: no genre has a share above 0")
-            continue
-        seen: set[tuple[str, str]] = set()
-        for r in weighted:
-            parent, style = _text(r.get("parent_genre")), _text(r.get("style"))
-            if (parent, style) not in genres:
-                errors.append(f"{key}: '{style}' is not a genre under '{parent}'")
-            if (parent, style) in seen:
-                errors.append(f"{key}: duplicate genre '{style}' under '{parent}'")
-            seen.add((parent, style))
-    return errors
-
-
-def normalise(group: list[Row]) -> list[Genre]:
-    """(parent, style, share) with shares divided by their total and rounded to 4 dp. Empty when cleared."""
-    items: list[tuple[str, str, float]] = []
-    for r in group:
-        style = _text(r.get("style"))
-        share = _share_of(r)
-        if style and share is not None and share > 0:
-            items.append((_text(r.get("parent_genre")), style, share))
-    total = sum(sh for _, _, sh in items)
-    if total <= 0:
-        return []
-    return [(p, s, round(sh / total, 4)) for p, s, sh in items]
+    return common.validate_groups(groups, known, common.valid_genres(con), "track_id", "track")
 
 
 def _current_map(con: duckdb.DuckDBPyConnection) -> dict[str, list[Genre]]:
@@ -177,66 +92,22 @@ def _current_map(con: duckdb.DuckDBPyConnection) -> dict[str, list[Genre]]:
         out.setdefault(track_id, []).append((parent, style, weight))
     for key, items in out.items():
         total = sum(w for _, _, w in items) or 1.0
-        out[key] = [(p, s, round(w / total, 4)) for p, s, w in items]
+        out[key] = [(p, s, sh) for p, s, w in items if (sh := round(w / total, 4)) > 0]
     return out
-
-
-def _same(new: list[Genre], old: list[Genre]) -> bool:
-    if {(p, s) for p, s, _ in new} != {(p, s) for p, s, _ in old}:
-        return False
-    old_share = {(p, s): sh for p, s, sh in old}
-    return all(abs(sh - old_share[(p, s)]) <= SAME_TOLERANCE + 1e-9 for p, s, sh in new)
-
-
-def _read_override_file(path: Path) -> dict[str, list[Genre]]:
-    if not path.exists():
-        return {}
-    out: dict[str, list[Genre]] = {}
-    with path.open(newline="", encoding="utf-8-sig") as fh:
-        for r in csv.DictReader(fh):
-            key = _text(r.get("track_id"))
-            style = _text(r.get("style"))
-            if not key:
-                continue
-            if not style:
-                out[key] = [(None, None, None)]
-            else:
-                out.setdefault(key, []).append((_text(r.get("parent_genre")) or None, style, float(r["share"])))
-    return out
-
-
-def _write_override_file(path: Path, overrides: dict[str, list[Genre]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh, lineterminator="\n")
-        writer.writerow(OVERRIDE_HEADER)
-        for key in sorted(overrides):
-            for parent, style, share in overrides[key]:
-                if style is None:
-                    writer.writerow([key, "", "", ""])
-                else:
-                    writer.writerow([key, parent or "", style, _fmt_share(share)])
-    os.replace(tmp, path)
 
 
 def load_track_overrides(con: duckdb.DuckDBPyConnection, overrides_path: Path | None = None) -> int:
     """Copy the track edits CSV into table track_genre_override. Returns the row count."""
-    path = DEFAULT_OVERRIDES if overrides_path is None else Path(overrides_path)
-    overrides = _read_override_file(path)
-    con.execute(
-        "CREATE OR REPLACE TABLE track_genre_override (track_id VARCHAR, parent_genre VARCHAR, style VARCHAR, "
-        "share DOUBLE)"
-    )
-    flat = [(key, p, s, sh) for key, items in overrides.items() for p, s, sh in items]
-    if flat:
-        con.executemany("INSERT INTO track_genre_override VALUES (?, ?, ?, ?)", flat)
-    return len(flat)
+    return common.load_override_table(con, "track_genre_override", "track_id", overrides_path, DEFAULT_OVERRIDES)
 
 
-def apply(con: duckdb.DuckDBPyConnection, overrides_path: Path | None = None) -> dict[str, int]:
+def apply(
+    con: duckdb.DuckDBPyConnection,
+    overrides_path: Path | None = None,
+    artist_overrides_path: Path | None = None,
+) -> dict[str, int]:
     """Rewrite track_genre so track edits, then artist edits, replace the automatic genres. Safe to rerun."""
-    artist_sheet.load_overrides(con)
+    artist_sheet.load_overrides(con, artist_overrides_path)
     track_edits = load_track_overrides(con, overrides_path)
     con.execute("CREATE OR REPLACE TEMP TABLE w15_manual AS SELECT DISTINCT track_id FROM track_genre_override")
     con.execute(
@@ -258,7 +129,7 @@ def apply(con: duckdb.DuckDBPyConnection, overrides_path: Path | None = None) ->
         "FROM w15_artist w JOIN artist_genre_override o ON o.artist_key = w.artist_key WHERE o.style IS NOT NULL"
     )
     artist_rows = con.execute(
-        "SELECT count(*) FROM track_genre WHERE level = 'artist'"
+        "SELECT count(*) FROM track_genre WHERE track_id IN (SELECT track_id FROM w15_artist)"
     ).fetchone()[0]
     return {"track_edits": track_edits, "artist_carried_rows": int(artist_rows)}
 
@@ -284,12 +155,12 @@ def import_sheet(
     if report["errors"]:
         return report
 
-    overrides = _read_override_file(target)
+    overrides = common.read_override_file(target, "track_id")
     current = _current_map(con)
     unchanged = 0
     for key, group in groups.items():
         new = normalise(group)
-        if _same(new, current.get(key, [])):
+        if common.same(new, current.get(key, [])):
             unchanged += 1
         else:
             overrides[key] = list(new) if new else [(None, None, None)]
@@ -298,7 +169,7 @@ def import_sheet(
 
     if dry_run:
         return report
-    _write_override_file(target, overrides)
+    common.write_override_file(target, overrides, OVERRIDE_HEADER)
     report["apply"] = apply(con, target)
     return report
 

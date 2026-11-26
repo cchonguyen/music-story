@@ -3,7 +3,7 @@
 Longitudinal artist trajectories, 20-year lifelines across Staples, Comebacks, and Flashes, plus the **Underground Obscurity Index** and **Early-Adopter Vanguard** powered by Last.fm global listener counts and MusicBrainz career start years.
 
 ```js
-import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
+import {csvDownloadButton} from "./components/csvExport.js";
 const artistYear = await FileAttachment("data/artist_year.json").json();
 const arc = await FileAttachment("data/artist_arc.json").json();
 const remix = await FileAttachment("data/remixer_year.json").json();
@@ -95,10 +95,11 @@ const matrixCells = artistYear
 ```
 
 ```js
+const [minArtistYear, maxArtistYear] = d3.extent(artistYear, (d) => d.year);
 Plot.plot({
   marginLeft: 155,
   height: Math.max(220, orderedArtistNames.length * 22 + 50),
-  x: {label: "Year", tickFormat: "d", domain: d3.range(2007, 2027)},
+  x: {label: "Year", tickFormat: "d", domain: d3.range(minArtistYear, maxArtistYear + 1)},
   y: {label: null, domain: orderedArtistNames},
   color: {legend: true, scheme: "YlGnBu", label: "Plays in year (ranked top-50)"},
   marks: [
@@ -258,35 +259,8 @@ Every artist with at least 3 plays, with every genre and its share. Edit the CSV
 
 ```js
 const sheetRows = await FileAttachment("data/artist_genre_sheet.json").json();
-
-// RFC 4180 cell quoting. Blank values become empty cells.
-const csvCell = (v) => {
-  if (v == null) return "";
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-// Header and one line per artist-genre row, same columns the pipeline writes.
-const sheetCsv = (rows) => {
-  const head = ["artist_key", "artist", "plays", "parent_genre", "style", "share", "source"];
-  const lines = rows.map((r) =>
-    [r.artist_key, r.artist, r.plays, r.parent_genre, r.style, r.share, r.source].map(csvCell).join(",")
-  );
-  return [head.join(","), ...lines].join("\n") + "\n";
-};
-
-const sheetButton = Inputs.button("Export CSV", {
-  reduce: () => {
-    const blob = new Blob([sheetCsv(sheetRows)], {type: "text/csv;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "artist_genre_sheet.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-});
-display(sheetButton);
+const sheetColumns = ["artist_key", "artist", "plays", "parent_genre", "style", "share", "source"];
+display(csvDownloadButton("Export CSV", "artist_genre_sheet.csv", sheetRows, sheetColumns, Inputs));
 ```
 
 ```js

@@ -191,20 +191,20 @@ sec_genre AS (
     GROUP BY 1
 ),
 track_artist_pairs AS (
-    SELECT DISTINCT track_id, artist_id FROM plays
+    SELECT DISTINCT track_id, artist_id FROM plays WHERE NOT coalesce(incognito, false)
     UNION
-    SELECT DISTINCT track_id, artist_id FROM skips
-    UNION
-    SELECT track_id, primary_artist_id AS artist_id FROM dim_track
+    SELECT DISTINCT track_id, artist_id FROM skips WHERE NOT coalesce(incognito, false)
 ),
 play_stats AS (
     SELECT track_id,
            artist_id,
            count(*) AS plays,
+           count(*) FILTER (WHERE source <> 'lastfm') AS sp_plays,
            sum(ms_imputed) AS ms_imputed,
            min(year(started_at_local)) AS first_year,
            max(year(started_at_local)) AS last_year
     FROM plays
+    WHERE NOT coalesce(incognito, false)
     GROUP BY 1, 2
 ),
 skip_stats AS (
@@ -212,6 +212,7 @@ skip_stats AS (
            artist_id,
            count(*) AS skips
     FROM skips
+    WHERE NOT coalesce(incognito, false)
     GROUP BY 1, 2
 ),
 pair_keys AS (
@@ -227,6 +228,7 @@ pair_keys AS (
            tg.level,
            coalesce(sg.secondary_styles, '') AS secondary_styles,
            coalesce(ps.plays, 0) AS plays,
+           coalesce(ps.sp_plays, 0) AS sp_plays,
            coalesce(ps.ms_imputed, 0) AS ms_imputed,
            coalesce(ss.skips, 0) AS skips,
            ps.first_year,
@@ -248,6 +250,7 @@ hr_counts AS (
            count(*) AS n
     FROM plays p
     JOIN pair_keys pk USING (track_id, artist_id)
+    WHERE NOT coalesce(p.incognito, false)
     GROUP BY 1, 2, 3, 4, 5
 ),
 peak_hr AS (
@@ -271,6 +274,7 @@ country_counts AS (
            count(*) AS n
     FROM plays p
     JOIN pair_keys pk USING (track_id, artist_id)
+    WHERE NOT coalesce(p.incognito, false)
     GROUP BY 1, 2, 3, 4, 5
 ),
 modal_country AS (
@@ -309,7 +313,7 @@ grouped AS (
            sum(pk.plays)::BIGINT AS plays,
            round(sum(pk.ms_imputed) / 3.6e6, 2) AS listen_hours,
            round(
-               sum(pk.skips)::DOUBLE / nullif(sum(pk.plays) + sum(pk.skips), 0),
+               sum(pk.skips)::DOUBLE / nullif(sum(pk.sp_plays) + sum(pk.skips), 0),
                4
            ) AS skip_rate,
            min(pk.first_year) AS first_year,
@@ -333,8 +337,8 @@ SELECT g.track_id,
        coalesce(g.skip_rate, 0.0) AS skip_rate,
        coalesce(ph.peak_local_hour, 12) AS peak_local_hour,
        coalesce(mc.top_country, 'US') AS top_country,
-       coalesce(g.first_year, 2020) AS first_year,
-       coalesce(g.last_year, 2026) AS last_year
+       g.first_year,
+       g.last_year
 FROM grouped g
 LEFT JOIN peak_hr ph USING (artist_norm, title_norm, parent_genre, style)
 LEFT JOIN modal_country mc USING (artist_norm, title_norm, parent_genre, style);

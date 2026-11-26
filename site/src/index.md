@@ -3,7 +3,6 @@
 19.5 years of personal listening telemetry across Last.fm (Apr 2007–Oct 2026) and Spotify (Jul 2011–Oct 2026).
 
 ```js
-import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
 const year = await FileAttachment("data/year.json").json();
 const clock = await FileAttachment("data/clock.json").json();
 
@@ -17,7 +16,7 @@ const peakYearRow = d3.greatest(year, (d) => d.plays);
   <div>
     <div style="font-size: 0.75rem; opacity: 0.68;">Total Verified Plays</div>
     <div style="font-size: 1.45rem; font-weight: 600;">${totalPlays.toLocaleString()}</div>
-    <div style="font-size: 0.75rem; opacity: 0.65;">2007–2026 · v${SPECIFICATION_BASELINE.version}</div>
+    <div style="font-size: 0.75rem; opacity: 0.65;">${d3.min(year, (d) => d.year)}–${d3.max(year, (d) => d.year)}</div>
   </div>
   <div>
     <div style="font-size: 0.75rem; opacity: 0.68;">Cumulative Listening Time</div>

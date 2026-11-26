@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import sys
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -31,13 +32,17 @@ CHUNK_SIZE = 1024 * 1024 * 4  # 4 MB chunks
 
 def get_latest_dump_url() -> str:
     """Find the latest available masters.xml.gz dump URL on data.discogs.com."""
-    year = time.strftime("%Y")
-    index_url = f"{DISCOGS_BASE_URL}/?prefix=data%2F{year}%2F"
-    resp = httpx.get(index_url, follow_redirects=True, timeout=15.0)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Failed to fetch Discogs dump index: HTTP {resp.status_code}")
-
-    links = re.findall(r'href=[\"\']([^\"\']*masters\.xml\.gz)[\"\']', resp.text)
+    current_year = int(time.strftime("%Y"))
+    links: list[str] = []
+    index_url = ""
+    for year in (current_year, current_year - 1):
+        index_url = f"{DISCOGS_BASE_URL}/?prefix=data%2F{year}%2F"
+        resp = httpx.get(index_url, follow_redirects=True, timeout=15.0)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Failed to fetch Discogs dump index: HTTP {resp.status_code}")
+        links = re.findall(r'href=[\"\']([^\"\']*masters\.xml\.gz)[\"\']', resp.text)
+        if links:
+            break
     if not links:
         raise RuntimeError(f"No masters.xml.gz links found in {index_url}")
 
@@ -52,12 +57,7 @@ def get_latest_dump_url() -> str:
 def load_discogs_targets(cache: Cache) -> dict[int, list[str]]:
     """Read cached Wikidata mappings to get {discogs_artist_id: [artist_norm, ...]}."""
     discogs_to_norms: dict[int, list[str]] = {}
-    with cache.lock:
-        rows = cache.db.execute(
-            "SELECT key, body FROM http_cache WHERE api = 'wikidata' AND endpoint = 'artist_discogs'"
-        ).fetchall()
-
-    for artist_norm, body in rows:
+    for artist_norm, _status, body, _at in cache.rows("wikidata", "artist_discogs"):
         if not body:
             continue
         try:
@@ -197,7 +197,7 @@ def run(cache: Cache, dump_file: Path | None = None, keep_dump: bool = False) ->
         print("No target Discogs artist IDs found in cache. Run pipeline.enrich_wikidata first.", file=sys.stderr)
         return 1
 
-    temp_path = dump_file or (Path("/tmp") / "discogs_masters_dump.xml.gz")
+    temp_path = dump_file or (Path(tempfile.gettempdir()) / "discogs_masters_dump.xml.gz")
     try:
         if not temp_path.exists():
             url = get_latest_dump_url()

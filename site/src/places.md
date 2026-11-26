@@ -3,7 +3,6 @@
 Physical listening footprint (`plays.country` and 48-hour neighbor imputation) alongside your **Musical Passport** (`dim_artist.country` from MusicBrainz, tracking where the artists you listen to originate).
 
 ```js
-import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
 const country = await FileAttachment("data/country_year.json").json();
 const passport = await FileAttachment("data/artist_passport.json").json();
 const known = country.filter((d) => d.country !== "unknown");

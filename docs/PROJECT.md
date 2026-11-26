@@ -1,6 +1,6 @@
 # music-story: project implementation notes
 
-As of 2026-10-27. `STATE.md` is still the place to resume work from, and `CLAUDE.md` holds the
+As of 2026-11-26. `STATE.md` is still the place to resume work from, and `CLAUDE.md` holds the
 working rules. This file collects the critical facts and decisions from both, plus the
 enrichment and Spotify-quota work, so they can be reviewed in one place.
 
@@ -8,7 +8,7 @@ enrichment and Spotify-quota work, so they can be reviewed in one place.
 
 The project turns 19.5 years of listening history (Last.fm from Apr 2007, Spotify from Jul 2011,
 both through Oct 2026) into a private story site. A DuckDB pipeline feeds an Observable Framework
-site, which is served from Cloudflare Workers static assets at `music.charliechonguyen.com` behind
+site, which is served from Cloudflare Workers static assets at the configured custom domain behind
 Cloudflare Access.
 
 Privacy rules:
@@ -24,7 +24,7 @@ Privacy rules:
 | --- | --- | --- |
 | Spotify Extended Streaming History (`Streaming_History_Audio_*.json`) | 130,513 rows, 35,646 track URIs. `ts` is when the track stopped (UTC), so start = `ts - ms_played` | Jul 2011 to 20 Oct 2026; ~25% of events are under 30 s |
 | Spotify video history | tiny | ignored |
-| Last.fm CSV (user brainchildvn) | 114,332 scrobbles: uts, artist, album, track and their MBIDs | Apr 2007 to 21 Oct 2026; 2007-2010 Last.fm only; 2014-2019 sparse |
+| Last.fm CSV | 114,332 scrobbles: uts, artist, album, track and their MBIDs | Apr 2007 to 21 Oct 2026; 2007-2010 Last.fm only; 2014-2019 sparse |
 
 Measured facts:
 - A Last.fm scrobble time is about equal to the Spotify start time (median -0.6 s).
@@ -72,7 +72,8 @@ America/Vancouver.
 | 03 | W3 | Parse the HTTP cache into `enr_*` tables (no network) |
 | 04 | W7 | Dimensions: `track_uri_map`, `track_key_map`, `dim_track`, `dim_artist`, `dim_album`, `bridge_track_artist` |
 | 05 | W8 | Sessions (20 min gap), country imputation, plays and skips |
-| 06 | W9 / W9b | Genre map (222 rows, 5 columns with `is_umbrella`) and parameterised two-tier `track_genre` builder |
+| 06 | W9 / W9b / W9f | Genre map (357 rows, 10 parents, `is_umbrella`) and parameterised two-tier `track_genre` builder with domain vendor weights |
+| 06b | W14 / W15 | Apply manual track & artist genre overrides (`artist_sheet.py`, `track_sheet.py`) over `track_genre` |
 | 07 | W5/W6/W9c | Marts (`sql/marts/*.sql` in name order, including `mart_genre_xray`, `mart_genre_hierarchy`, `mart_genre_clock`) |
 
 ### Genre umbrella disaggregation & sensitivity benchmark (`W9b`)
@@ -88,16 +89,16 @@ America/Vancouver.
 | `ramp_soft_hinge` (`rho=[0.10, 0.30]`, `floor=[0.10, 0.20]`, two-stage, **default**) | `0.7918` | `0.2000` | `2.800` | Zero step discontinuities; retains $79.18\%$ specific micro-style weight across the 50-track benchmark |
 
 After a build, `uv run python -m pipeline.artist_genre export` writes `build/artist_genres.json`
-for Concert Tracker (concert.charliechonguyen.com): every artist with a genre (name, MBID, styles
+for Concert Tracker: every artist with a genre (name, MBID, styles
 with weights summing to 1, which tag sources fed it) plus the `is_genre` rows of the genre map.
 Artist level only, intentionally kept on the legacy `MIN_SHARE = 0.15` hard floor so Concert Tracker's
 `music-story/artist-genres` v1 contract is unchanged. No schema
-change; the file is computed on demand and stays in `build/`. Charlie uploads it in Concert
+change; the file is computed on demand and stays in `build/`. You upload it in Concert
 Tracker's Table tab, which keeps only acts seen live and uses the genre map to read MusicBrainz
 genres for acts this file does not cover.
 
 Fetching from APIs is not a build step. It is a separate, resumable job:
-`uv run python -m pipeline.enrich fetch`. It runs on Charlie's Mac, where the cache
+`uv run python -m pipeline.enrich fetch`. It runs on the local machine, where the cache
 (`~/.cache/music-story/http_cache.sqlite`), `.env` and the real DuckDB persist.
 
 Gate 1 requires that at least 95% of 2023-26 scrobbles are matched. It passed at 95.81% after
@@ -219,11 +220,11 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-10-23 | Daily Spotify budget of 500 as a probe; pause on QUOTA_EXCEEDED | The quota is a per-account count, so pacing does not protect it |
 | 2026-10-23 | Spotify floor of 3+ plays (`--spotify-min-plays 5` also available) | 10,544 URIs cover 76% of plays |
 | 2026-10-23 | `spotify.artists` held by default | Genres only, already covered by Last.fm and MB |
-| 2026-10-28 | Cover target set to 80% (default `--spotify-cover 0.80`, top 13,234 URIs; Spotify tail lookups past that rank go to Deezer/MusicBrainz search). Supersedes the 98% row below | Charlie's call: 98% needs ~30k lookups (months); 80% needs ~10k (about 3 weeks at 500/day) |
-| 2026-10-28 | Charlie approved freezing the dataset once fetched Spotify tracks cover ~98% of plays (`--spotify-cover`); `status` and `dims` report the exact play coverage | A week of 500/day reached 2,814 of 35,646 URIs (48% of Spotify plays); the long tail is flat, so see section 8 |
+| 2026-10-28 | Cover target set to 80% (default `--spotify-cover 0.80`, top 13,234 URIs; Spotify tail lookups past that rank go to Deezer/MusicBrainz search). Supersedes the 98% row below | Owner's call: 98% needs ~30k lookups (months); 80% needs ~10k (about 3 weeks at 500/day) |
+| 2026-10-28 | Approved freezing the dataset once fetched Spotify tracks cover ~98% of plays (`--spotify-cover`); `status` and `dims` report the exact play coverage | A week of 500/day reached 2,814 of 35,646 URIs (48% of Spotify plays); the long tail is flat, so see section 8 |
 | 2026-10-23 | Tail ISRCs from Deezer and MB search; `dim_album` fallback from play album names | ISRCs and albums no longer depend on the Spotify quota |
 | 2026-10-27 | Explorer loads DuckDB-Wasm from jsDelivr, not Framework's self-hosted DuckDBClient | Self-hosting puts `duckdb-eh.wasm` (34 MiB) and `duckdb-mvp.wasm` (39 MiB) in `dist/`, over the 25 MiB per-file limit of Workers static assets. Rejected: Arrow IPC with a plain-JS explorer (7 MB uncompressed vs 0.6 MB Parquet on the fixture, and no SQL) |
-| 2026-10-27 | Artist genres for Concert Tracker as an exported JSON file (`pipeline/artist_genre.py`), not a table or an API | The database stays on Charlie's Mac; Concert Tracker runs on Cloudflare and cannot reach it. Shipping the genre map with it keeps one curated map for both apps. Rejected: a published endpoint behind Access (couples the two deploys) |
+| 2026-10-27 | Artist genres for Concert Tracker as an exported JSON file (`pipeline/artist_genre.py`), not a table or an API | The database stays local; Concert Tracker runs on Cloudflare and cannot reach it. Shipping the genre map with it keeps one curated map for both apps. Rejected: a published endpoint behind Access (couples the two deploys) |
 | 2026-10-29 | Explorer privacy gate: incognito plays and skips are left out, and time is only `day`, `hour` and ISO `weekday` (no timestamps) | The plan's W12 gate, applied to the one row-level export so there is a single data path; the explorer's year, month and first or last play use only `day` |
 | 2026-10-27 | Explorer rows include skips, flagged `is_skip` | Skip rate per artist or track needs them; counts and hours leave them out so they match the marts |
 | 2026-10-30 | Non-destructive data preservation invariant | Raw listening telemetry is never destructively overwritten or pruned; all recalculations, merges, and enrichments must be additive or non-destructive views/marts |
@@ -243,12 +244,11 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
   Deezer and MusicBrainz search already finished their tail (28k and 24k keys). Run
   `build_pipeline --from 03 --to 04` and read the `dims: coverage by plays` line for the real
   figure before choosing a Spotify cap.
-- Review the genre map parents with Charlie: blues to jazz, hardcore to metal, reggae/dub/ska to
-  world.
+- Review the remaining genre map parents: blues to jazz, reggae/dub/ska to world (`hardcore -> metal -> rock` already resolved in W9d).
 - When the fetch is done: real `build_pipeline`, then the site build with SITE_DB, then deploy.
 - The explorer has only been checked on the fixture, in a headless browser with the CDN files served
   locally (this cloud container blocks jsDelivr and extensions.duckdb.org). Check it once on the
   deployed site.
-- Marts still count incognito plays in their aggregates (only the explorer drops them). Decide with Charlie
+- Marts still count incognito plays in their aggregates (only `explorer_plays` and `mart_genre_xray` drop them). Decide
   whether marts should drop them too.
 - Remaining packets: W11 stats (real data), W13 story. W12 export is folded into the explorer (2026-10-29).

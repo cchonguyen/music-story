@@ -3,7 +3,6 @@
 Weighted parent-genre and style distribution over 19.5 years, powered by the two-tier `W9b` umbrella disaggregation rule (continuous linear ramp $\alpha(\rho_P)$ on $[0.10, 0.30]$ and two-stage soft-hinge floor $g(x; 0.10, 0.20)$), with an explicit **Epistemic Coverage Toggle**, **Genre $\to$ Sub-Style $\to$ Artist Hierarchy**, **Local-Time Circadian Rhythm**, and **Song Genre X-Ray**.
 
 ```js
-import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
 const genreYear = await FileAttachment("data/genre_year.json").json();
 const yearTotals = await FileAttachment("data/year.json").json();
 const genreHierarchy = await FileAttachment("data/genre_hierarchy.json").json();
@@ -406,7 +405,7 @@ const xrayStyleOptions = [
   ).sort((a, b) => b[1] - a[1]).map((d) => d[0])
 ];
 const xrayStyle = view(Inputs.select(xrayStyleOptions, {label: "Primary sub-style", value: "All"}));
-const xrayLevel = view(Inputs.select(["All", "track", "album", "artist"], {
+const xrayLevel = view(Inputs.select(["All", "manual", "track", "album", "artist"], {
   label: "Tag specificity level",
   value: "All"
 }));
@@ -453,7 +452,7 @@ Inputs.table(
     skip_rate: `${(d.skip_rate * 100).toFixed(1)}%`,
     peak_hour: `${String(d.peak_local_hour).padStart(2, "0")}:00`,
     country: d.top_country,
-    active_years: `${d.first_year}–${d.last_year}`
+    active_years: d.first_year && d.last_year ? `${d.first_year}–${d.last_year}` : "—"
   })),
   {rows: 20}
 )

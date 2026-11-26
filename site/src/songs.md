@@ -3,9 +3,8 @@
 Annual top recordings, 14-day obsession binges, the **Earworm Half-Life** (distinguishing short-lived burnouts from canonized anthems), and the **Musical Biological Clock** (song age at the moment of play).
 
 ```js
-import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
+import {csvDownloadButton} from "./components/csvExport.js";
 const trackYear = await FileAttachment("data/track_year.json").json();
-const binge = await FileAttachment("data/binge.json").json();
 const earworm = await FileAttachment("data/earworm_halflife.json").json();
 const songAge = await FileAttachment("data/song_age.json").json();
 const trackLabel = await FileAttachment("data/track_label.json").json();
@@ -196,33 +195,8 @@ Every track with at least 3 plays, with its title, artist, genres and share. Exp
 
 ```js
 const trackSheetRows = await FileAttachment("data/track_genre_sheet.json").json();
-
-const csvCellT = (v) => {
-  if (v == null) return "";
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-const trackSheetCsv = (rows) => {
-  const head = ["track_id", "title", "artist", "plays", "parent_genre", "style", "share", "source"];
-  const lines = rows.map((r) =>
-    [r.track_id, r.title, r.artist, r.plays, r.parent_genre, r.style, r.share, r.source].map(csvCellT).join(",")
-  );
-  return [head.join(","), ...lines].join("\n") + "\n";
-};
-
-const trackSheetButton = Inputs.button("Export track CSV", {
-  reduce: () => {
-    const blob = new Blob([trackSheetCsv(trackSheetRows)], {type: "text/csv;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "track_genre_sheet.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-});
-display(trackSheetButton);
+const trackSheetColumns = ["track_id", "title", "artist", "plays", "parent_genre", "style", "share", "source"];
+display(csvDownloadButton("Export track CSV", "track_genre_sheet.csv", trackSheetRows, trackSheetColumns, Inputs));
 ```
 
 ```js

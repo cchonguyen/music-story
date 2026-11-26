@@ -30,7 +30,7 @@ one-liner as the existing `year.json.sh`.
 - `places.md` Places: plays per country per year, with 'unknown' shown separately.
 
 Use Observable Plot and Inputs only (no extra npm packages). Captions say what a chart shows, never
-claims about Charlie's life; leave a `<!-- story: ... -->` comment where narrative text will go.
+claims about the listener's life; leave a `<!-- story: ... -->` comment where narrative text will go.
 
 ## Done when
 `uv run pytest tests/test_site_pages.py` passes, `cd site && npm run build` succeeds on the fixture, the

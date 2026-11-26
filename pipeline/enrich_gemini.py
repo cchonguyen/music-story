@@ -20,6 +20,7 @@ import httpx
 
 from pipeline import config
 from pipeline.enrich_cache import Cache
+from pipeline.genre import PARENTS
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +30,7 @@ BATCH_SIZE = 25
 
 
 def load_api_key() -> str | None:
-    key = os.environ.get("GEMINI_API_KEY")
-    if key:
-        return key
-    env_file = config.REPO_ROOT / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            if line.startswith("GEMINI_API_KEY="):
-                return line.split("=", 1)[1].strip()
-    return None
+    return config.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
 
 
 def get_candidate_artists(
@@ -140,37 +133,14 @@ def build_evidence_lookup(con: duckdb.DuckDBPyConnection) -> dict[str, dict[str,
     return lookup
 
 
-def build_evidence(con: duckdb.DuckDBPyConnection, artist_norm: str) -> dict[str, Any] | None:
-    row = con.execute("SELECT artist_norm, name, country FROM dim_artist WHERE artist_norm = ?", [artist_norm]).fetchone()
-    if not row:
-        return None
-    a_norm, disp_name, country = row
-    tracks = [r[0] for r in con.execute("""
-        SELECT t.title FROM dim_track t JOIN dim_artist a ON a.artist_id = t.primary_artist_id
-        WHERE a.artist_norm = ? LIMIT 4
-    """, [a_norm]).fetchall()]
-    tags = [r[0] for r in con.execute("""
-        SELECT l.tag FROM enr_lastfm_tags l WHERE l.entity_key = ? AND l.entity_type = 'artist' LIMIT 6
-    """, [a_norm]).fetchall()]
-    mb_genres = [r[0] for r in con.execute("""
-        SELECT unnest(genres) FROM enr_mb_artist m JOIN dim_artist a USING (artist_mbid)
-        WHERE a.artist_norm = ?
-    """, [a_norm]).fetchall()][:6]
-    discogs_styles = [r[0] for r in con.execute("""
-        SELECT unnest(styles) FROM enr_discogs_artist WHERE artist_norm = ?
-    """, [a_norm]).fetchall()][:6]
-    return {
-        "artist_norm": a_norm,
-        "name": disp_name,
-        "country": country or "unknown",
-        "sample_tracks": tracks,
-        "lastfm_tags": tags,
-        "mb_genres": mb_genres,
-        "discogs_styles": discogs_styles,
-    }
-
-
-def call_gemini_batch(api_key: str, model_id: str, valid_styles: list[str], batch: list[dict]) -> list[dict]:
+def call_gemini_batch(
+    api_key: str,
+    model_id: str,
+    valid_styles: list[str],
+    batch: list[dict],
+    client: httpx.Client | None = None,
+) -> list[dict]:
+    allowed_parents = ", ".join(PARENTS)
     prompt = f"""
 You are an expert music genre taxonomist. For each artist below, select 1 to 3 styles strictly from this allowed parent -> style list:
 {json.dumps(valid_styles)}
@@ -180,7 +150,7 @@ Rules:
 2. If evidence is ambiguous, assign lower weight or confidence.
 3. Return strict JSON array matching the artist list.
 
-Allowed parent genres are ONLY: electronic, pop, rock, hip hop, r&b, country, soundtrack, classical, jazz, world.
+Allowed parent genres are ONLY: {allowed_parents}.
 
 Artists to classify:
 {json.dumps(batch, indent=2)}
@@ -198,14 +168,16 @@ Output format:
   ]
 }}
 """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
+    headers = {"x-goog-api-key": api_key}
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}
 
     for attempt in range(1, 4):
         try:
-            resp = httpx.post(
-                url,
-                json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}},
-                timeout=60.0,
+            resp = (
+                client.post(url, headers=headers, json=payload, timeout=60.0)
+                if client is not None
+                else httpx.post(url, headers=headers, json=payload, timeout=60.0)
             )
             if resp.status_code == 429:
                 wait_sec = 4.0 * attempt
@@ -280,14 +252,14 @@ def run_enrichment(
     start_time = time.time()
     completed_batches = 0
 
-    def process_batch(idx_and_keys: tuple[int, list[str]]) -> int:
+    def process_batch(idx_and_keys: tuple[int, list[str]], client: httpx.Client) -> int:
         idx, batch_keys = idx_and_keys
         batch_evidence = [evidence_lookup[k] for k in batch_keys if k in evidence_lookup]
         if not batch_evidence:
             return 0
         classified = 0
         try:
-            results = call_gemini_batch(api_key, model_id, valid_styles, batch_evidence)
+            results = call_gemini_batch(api_key, model_id, valid_styles, batch_evidence, client=client)
             for res in results:
                 a_norm = res.get("artist_norm")
                 if a_norm:
@@ -300,9 +272,9 @@ def run_enrichment(
         return classified
 
     print(f"Processing {total_batches} batches with {workers} parallel workers...")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+    with httpx.Client(timeout=60.0) as client, concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         batch_inputs = list(enumerate(batches, 1))
-        futures = {executor.submit(process_batch, item): item[0] for item in batch_inputs}
+        futures = {executor.submit(process_batch, item, client): item[0] for item in batch_inputs}
         for future in concurrent.futures.as_completed(futures):
             b_idx = futures[future]
             try:

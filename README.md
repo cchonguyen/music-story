@@ -45,7 +45,7 @@ cd site && npm ci && npm run build   # install site dependencies and build; outp
 
 Real runs need your own exports. Place them where you like, then set `DATA_DIR` in `.env` to point at them.
 
-API keys go in `.env`. These cover Last.fm, Spotify, a MusicBrainz contact address, Gemini, and Discogs. `.env.example` lists the variable names. Do not commit `.env`.
+API keys go in `.env`. These cover Last.fm, Spotify, a MusicBrainz contact address, and Gemini. `.env.example` lists the variable names. Do not commit `.env`.
 
 Enrichment is resumable and rate-limited, so an interrupted run can be restarted without losing finished work.
 
@@ -58,3 +58,4 @@ The site is deployed as Cloudflare Workers static assets, configured in `wrangle
 - `CLAUDE.md`: working rules for contributors and coding agents.
 - `STATE.md`: current progress.
 - `docs/PROJECT.md`: decision log.
+- `docs/CLOUD_SETUP.md`: optional \$0 cloud automation with Cloudflare R2 and GitHub Actions.

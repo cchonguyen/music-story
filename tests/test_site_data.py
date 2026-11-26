@@ -95,17 +95,20 @@ def test_parquet_bytes_size_guard(fixture_db_path):
         parquet_bytes("explorer_plays", max_bytes=1024)
 
 
-def test_genre_xray_keys_are_unique():
-    """generate_fixture_marts writes genre_xray.json uniquely keyed on the 4-tuple
-    (artist_norm, title_norm, parent_genre, style)."""
-    from scripts import generate_fixture_marts
+def test_genre_xray_parquet_export(fixture_db_path, tmp_path):
+    from pipeline.site_data import MAX_PARQUET_BYTES
 
-    generate_fixture_marts.build_all_marts()
-    xray_path = generate_fixture_marts.CACHE_DIR / "genre_xray.json"
-    assert xray_path.exists()
-    xray_rows = json.loads(xray_path.read_text())
-    keys = [(r["artist_norm"], r["title_norm"], r["parent_genre"], r["style"]) for r in xray_rows]
-    assert len(keys) == len(set(keys))
+    data = parquet_bytes("mart_genre_xray")
+    assert data[:4] == b"PAR1"
+    assert len(data) < MAX_PARQUET_BYTES
+    out = tmp_path / "genre_xray.parquet"
+    out.write_bytes(data)
+    con = duckdb.connect()
+    total, distinct_4tuple = con.execute(
+        f"SELECT count(*), count(DISTINCT (artist_norm, title_norm, parent_genre, style)) FROM '{out}'"
+    ).fetchone()
+    assert total > 0
+    assert total == distinct_4tuple
 
 
 def test_artist_genre_sheet_loader_prints_rows(fixture_db_path, capsys):
@@ -115,3 +118,4 @@ def test_artist_genre_sheet_loader_prints_rows(fixture_db_path, capsys):
     rows = json.loads(capsys.readouterr().out)
     assert rows and set(rows[0]) == {"artist_key", "artist", "plays", "parent_genre", "style", "share", "source"}
     assert all(r["plays"] >= 3 for r in rows)
+    assert any(r["style"] is not None for r in rows)

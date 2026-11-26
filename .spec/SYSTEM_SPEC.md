@@ -4,7 +4,7 @@ Full detail: [docs/PROJECT.md](../docs/PROJECT.md). Table contract: `sql/schema.
 `tests/test_schema.py`. Working rules: `docs/RULES.md`. Wave status: `STATE.md`.
 
 ## 1. Core Scope
-- **Input:** Spotify Extended Streaming History and the Last.fm CSV. Both stay on Charlie's machine.
+- **Input:** Spotify Extended Streaming History and the Last.fm CSV. Both stay on the local machine.
 - **Pipeline:** `uv run python -m pipeline.build_pipeline [--fixtures]` runs steps 00-07 into one DuckDB
   file: ingest, normalise + match (Gate 1: at least 95% of 2023-26 scrobbles; passed at 95.81%),
   enrichment parse, dims, sessions, genre, marts.

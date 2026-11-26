@@ -519,3 +519,28 @@ def test_status_reports_spotify_play_coverage(tmp_path, monkeypatch):
     put(cache, "spotify", "tracks", "popular", 200, {})
     put(cache, "spotify", "tracks", "rare", 404, None)
     assert enrich.spotify_play_coverage(cache) == "spotify: 4 of 6 Spotify plays (66.67%) have a stored track response"
+
+
+def test_wikidata_http_error_does_not_cache_empty(monkeypatch):
+    from pipeline import enrich_wikidata
+
+    con = fresh_db()
+    con.execute("INSERT INTO dim_artist VALUES (1, 'Act', 'act', 'mbid-1', NULL, NULL, NULL, NULL, NULL, NULL)")
+    con.execute(
+        "INSERT INTO plays VALUES (1, TIMESTAMP '2025-01-01 00:00:00', TIMESTAMP '2025-01-01 00:03:00', "
+        "TIMESTAMP '2025-01-01 00:00:00', 'UTC', 'US', false, 't1', 1, NULL, 1, 1, false, false, "
+        "180000, 180000, 1.0, 'spotify', NULL, NULL, 'ios', false, false, false, NULL, NULL, false)"
+    )
+    cache = Cache(":memory:")
+
+    class FakeResp:
+        status_code = 503
+        text = "Service Unavailable"
+
+    monkeypatch.setattr(enrich_wikidata.httpx, "get", lambda *a, **kw: FakeResp())
+    monkeypatch.setattr(enrich_wikidata.time, "sleep", lambda *_: None)
+    res = enrich_wikidata.run_bridge(con, cache)
+    assert res == {}
+    assert cache.get("wikidata", "artist_discogs", "act") is None
+    cache.close()
+    con.close()

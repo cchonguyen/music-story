@@ -2,7 +2,7 @@
 
 ## What This App Does
 - Turns 19.5 years of Spotify + Last.fm listening history into a private story site at
-  music.charliechonguyen.com (behind Cloudflare Access). Detail: `docs/PROJECT.md`.
+  the configured custom domain (behind Cloudflare Access). Detail: `docs/PROJECT.md`.
 
 ## Active External Services & Keys
 - Cloudflare (Workers static assets + Access), Spotify, Last.fm, Deezer, MusicBrainz, Gemini.

@@ -58,7 +58,7 @@ CREATE OR REPLACE TABLE raw_lastfm (
 );
 
 ------------------------------------------------------------------------------
--- Layer 2: staging (01_ingest.sql creates rows; 02_match.py fills norm columns)
+-- Layer 2: staging (01_ingest.sql creates rows; pipeline/match.py fills norm columns)
 ------------------------------------------------------------------------------
 
 -- Music events only: raw_spotify rows with spotify_track_uri NOT NULL and
@@ -117,7 +117,7 @@ CREATE OR REPLACE TABLE lfm_self_dupes (
 );
 
 ------------------------------------------------------------------------------
--- Layer 3: matching (02_match.py, W2)
+-- Layer 3: matching (pipeline/match.py, W2)
 ------------------------------------------------------------------------------
 
 -- One row per accepted Spotify <-> Last.fm pair. 1-to-1 on both sides.
@@ -155,7 +155,7 @@ CREATE OR REPLACE TABLE events (
 );
 
 ------------------------------------------------------------------------------
--- Layer 4: enrichment (03_enrich.py, W3). Parsed views of the HTTP cache.
+-- Layer 4: enrichment (pipeline/enrich.py, W3). Parsed views of the HTTP cache.
 -- The HTTP cache itself is SQLite, see sql/cache_schema.sql.
 ------------------------------------------------------------------------------
 
@@ -296,7 +296,7 @@ CREATE OR REPLACE TABLE enr_discogs_artist (
 );
 
 ------------------------------------------------------------------------------
--- Layer 5: dimensions (04_dims.py, W7)
+-- Layer 5: dimensions (pipeline/dims.py, W7)
 ------------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE dim_artist (
@@ -422,7 +422,7 @@ CREATE OR REPLACE TABLE plays (
 CREATE OR REPLACE TABLE skips AS SELECT * FROM plays WHERE false;
 
 ------------------------------------------------------------------------------
--- Layer 7: genre (06_genre.py, W9)
+-- Layer 7: genre (pipeline/genre.py, W9; overrides in pipeline/artist_sheet.py & pipeline/track_sheet.py)
 ------------------------------------------------------------------------------
 
 -- Hand-curated mapping, loaded from data/genre_map.csv.
@@ -441,6 +441,22 @@ CREATE OR REPLACE TABLE track_genre (
     parent_genre  VARCHAR NOT NULL,
     style         VARCHAR NOT NULL,           -- = parent_genre when no finer style is known
     weight        DOUBLE NOT NULL,
-    level         VARCHAR NOT NULL,           -- track|album|artist: best level that contributed
+    level         VARCHAR NOT NULL,           -- track|album|artist|manual: best level or override
     PRIMARY KEY (track_id, parent_genre, style)
+);
+
+-- Manual artist-level genre overrides loaded from DATA_DIR/artist_genre_overrides.csv (W14).
+CREATE OR REPLACE TABLE artist_genre_override (
+    artist_key    VARCHAR,
+    parent_genre  VARCHAR,
+    style         VARCHAR,
+    share         DOUBLE
+);
+
+-- Manual track-level genre overrides loaded from DATA_DIR/track_genre_overrides.csv (W15).
+CREATE OR REPLACE TABLE track_genre_override (
+    track_id      VARCHAR,
+    parent_genre  VARCHAR,
+    style         VARCHAR,
+    share         DOUBLE
 );
