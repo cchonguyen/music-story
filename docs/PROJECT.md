@@ -58,6 +58,9 @@ America/Vancouver.
 | `scripts/make_fixtures.py` | Seeded fixture (~47k plays, seed 20260422) written to `fixtures/raw/` and `dev_fixtures.duckdb` |
 | `tests/` | Golden cases plus per-packet fixture acceptance tests |
 | `site/` | Observable Framework site. Loaders call `pipeline/site_data.py`, which reads SITE_DB or else the fixture marts |
+| `scripts/r2_sync.sh` | Syncs private `raw/` (exports + override CSVs), `http_cache.sqlite`, and `music.duckdb` with Cloudflare R2 |
+| `.github/workflows/cloud-pipeline.yml` | Cloud enrichment, DuckDB build, and Cloudflare Workers deploy via R2 + GitHub Actions |
+| `docs/CLOUD_SETUP.md` | Setup and runbook for the \$0 R2 + GitHub Actions cloud pipeline |
 | `specs/Wn_*.md` | One spec per work packet |
 
 ## 4. Pipeline
@@ -98,8 +101,11 @@ Tracker's Table tab, which keeps only acts seen live and uses the genre map to r
 genres for acts this file does not cover.
 
 Fetching from APIs is not a build step. It is a separate, resumable job:
-`uv run python -m pipeline.enrich fetch`. It runs on the local machine, where the cache
-(`~/.cache/music-story/http_cache.sqlite`), `.env` and the real DuckDB persist.
+`uv run python -m pipeline.enrich fetch`. Canonical private data (`raw/` exports +
+`*_genre_overrides.csv`, `cache/http_cache.sqlite`, and `build/music.duckdb`) is stored in a
+private **Cloudflare R2** bucket and synced via `scripts/r2_sync.sh` and
+`.github/workflows/cloud-pipeline.yml` (see `docs/CLOUD_SETUP.md`). When running locally,
+`bash scripts/r2_sync.sh pull` before pushing so newer cloud state is not overwritten.
 
 Gate 1 requires that at least 95% of 2023-26 scrobbles are matched. It passed at 95.81% after
 matcher pass 3 and twin removal; the first run gave 89.57%.
@@ -200,8 +206,11 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
   extensions.duckdb.org. Only library code comes from those CDNs; the data stays behind Access.
   Search matches both the shown names and the pipeline's normalised names, so no normalisation rules
   are copied into JavaScript.
-- To deploy, run `cd site && npm run build`, then `npx wrangler deploy` from the repo root.
-  `wrangler.jsonc` is assets-only with a custom domain route.
+- Production builds and deploys run in GitHub Actions (`.github/workflows/cloud-pipeline.yml`), which
+  pulls from R2, runs `build_pipeline`, builds `site/` with `SITE_DB`, injects `CLOUDFLARE_SITE_DOMAIN`
+  into `wrangler.jsonc`, and deploys via `npx wrangler deploy`. For local deploys, run
+  `cd site && npm run build`, then `npx wrangler deploy` from the repo root.
+  `wrangler.jsonc` is assets-only with a custom domain route (`music.example.com` placeholder in git).
 - The fixture site went live on 2026-10-22 behind Access. Checks: `/`, `/index.html` and the data
   files return 302 to the Access login, and the workers.dev URL returns 404.
 
@@ -234,6 +243,7 @@ When the fetch is done, run `build_pipeline` on the real data, then build the si
 | 2026-11-01 | `enr_artist_genre_llm` additive schema & batch runner `pipeline/enrich_gemini.py` using `gemini-3.6-flash` | Classifies 700 artists with $\ge 3$ plays lacking specific substyles; cached into SQLite and parsed additively into DuckDB without destroying raw tags or scrobbles; lifts play classification to 98.73% |
 | 2026-11-01 | Volume-ranked genre UI on `genres.md` | Parent genre and sub-style dropdown pickers and Plot color domains sort descending by weighted play volume instead of alphabetically |
 | 2026-11-01 | Discogs CC0 monthly dump stream-parser & Wikidata ID bridge (`pipeline/enrich_wikidata.py`, `pipeline/enrich_discogs.py`, `enr_discogs_artist`) | Bridges 3,807 catalog artists (77.8% of plays) to Discogs IDs; streams 2.6M masters without disk bloat, extracting physical release styles for 3,508 catalog artists; increases Electronic sub-style resolution to 91.4% and Rock to 93.0% |
+| 2026-11-26 | Canonical private data in Cloudflare R2 + GitHub Actions (`scripts/r2_sync.sh`, `.github/workflows/cloud-pipeline.yml`) | Zero-cost cloud execution and backup without keeping a Mac running or rewriting DuckDB SQL for Postgres; raw exports, overrides, HTTP cache, and DuckDB stay in a private R2 bucket and never enter Git |
 
 ## 8. Open items
 

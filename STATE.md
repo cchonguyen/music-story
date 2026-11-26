@@ -12,11 +12,11 @@ Wave: 2 merged. Real build + deploy verified behind Cloudflare Access.
 | W9d–W9g 10-parent + Gemini + Discogs + vendor weights | Antigravity | done (main; 10 parents, 357-row `genre_map.csv`, 7,932 artists, 99.83% coverage) |
 | W14 artist genre sheet (`pipeline/artist_sheet.py`) | Opus | done (main; export/import + browser CSV button on `artists.md`) |
 | W15 track genre sheet (`pipeline/track_sheet.py`) | Opus | slice 1 done (`06b` step, `track_genre_override`, browser button on `songs.md`) |
-| Audit cleanup (`antigravity/audit-cleanup`) | Antigravity | in progress (bug fixes, sheet consolidation, Parquet xray, doc/privacy scrub) |
+| Audit cleanup & Cloud pipeline (R2 + GitHub Actions) | Antigravity | done (main; `scripts/r2_sync.sh`, `.github/workflows/cloud-pipeline.yml`, deployed) |
 
 Next:
-1. Enrichment fetch (`uv run python -m pipeline.enrich fetch`) is resumable via `scripts/nightly_enrich.sh` (`--spotify-cover 0.80` default; `--spotify-min-plays N` overrides).
-2. Real-data site deploy: `SITE_DB=build/music.duckdb cd site && npm run build`, then `npx wrangler deploy` (configure your domain in `wrangler.jsonc` and enable Cloudflare Access first).
+1. Canonical private data (`raw/` exports + `*_genre_overrides.csv`, `cache/http_cache.sqlite`, `build/music.duckdb`) lives in a private **Cloudflare R2** bucket (`docs/CLOUD_SETUP.md`).
+2. Cloud builds, enrichment, and deploys run via GitHub Actions (**Actions → Cloud Pipeline & Deploy**). When working locally, run `bash scripts/r2_sync.sh pull` before editing/pushing so cloud state is not overwritten.
 
 Decisions (key):
 - Album key = `artist_norm::normalize_album(album_raw)`.

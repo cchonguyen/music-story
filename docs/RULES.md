@@ -36,5 +36,5 @@ path. Worktrees branch from origin's default branch, so push main before a wave 
 branch, merge, update STATE.md. A packet that fails its tests twice moves up one tier.
 
 ## Deploy
-`cd site && npm run build`, then `npx wrangler deploy` from the repo root (`wrangler.jsonc`: assets-only,
-`workers_dev` and `preview_urls` off, custom domain route). The Access app must exist before any deploy.
+- **Cloud (canonical):** Trigger **Actions → Cloud Pipeline & Deploy** (`.github/workflows/cloud-pipeline.yml`). It pulls `raw/`, `http_cache.sqlite`, and `music.duckdb` from the private Cloudflare R2 bucket, runs the pipeline, injects `CLOUDFLARE_SITE_DOMAIN` into `wrangler.jsonc`, and deploys behind Cloudflare Access. See `docs/CLOUD_SETUP.md`.
+- **Local:** Pull latest R2 state first (`bash scripts/r2_sync.sh pull`) before pushing local data changes (`bash scripts/r2_sync.sh push`). For manual deploys, run `cd site && npm run build`, then `npx wrangler deploy` from the repo root (`wrangler.jsonc`: assets-only, `workers_dev` and `preview_urls` off, custom domain route). The Access app must exist before any deploy.
