@@ -98,3 +98,9 @@ def test_import_rejects_unknown_genre_and_writes_nothing(con, tmp_path):
     report = sheet.import_sheet(con, sheet_file, overrides_path=target)
     assert report["errors"], "an unknown genre must be reported"
     assert not target.exists()
+
+
+def test_site_rows_have_the_export_columns(con):
+    data = sheet.rows(con, 3)
+    assert data
+    assert set(data[0].keys()) == {"track_id", "title", "artist", "plays", "parent_genre", "style", "share", "source"}
