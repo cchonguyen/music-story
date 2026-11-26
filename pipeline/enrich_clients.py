@@ -26,7 +26,7 @@ INTERVALS = {"spotify": 1.0, "musicbrainz": 1.05, "lastfm": 0.25, "deezer": 0.11
 # Requests per rolling 24 h. Spotify dev mode has an account-wide count quota (unpublished; the
 # first lockout came after ~600 requests), so pacing alone does not protect it. 0 = no budget:
 # rely on the QUOTA_EXCEEDED pause alone. Requests to LOGGED apis are counted either way.
-SPOTIFY_DAILY_BUDGET = int(os.environ.get("SPOTIFY_DAILY_BUDGET", "500"))
+SPOTIFY_DAILY_BUDGET = int(os.environ.get("SPOTIFY_DAILY_BUDGET") or "500")
 BUDGETS = {"spotify": SPOTIFY_DAILY_BUDGET or None}
 LOGGED = {"spotify"}
 QUOTA_PAUSE = 86400.0      # QUOTA_EXCEEDED without a usable Retry-After
