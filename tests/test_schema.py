@@ -9,7 +9,7 @@ EXPECTED = {
     "enr_local_duration", "enr_spotify_track", "enr_spotify_artist", "enr_mb_recording", "enr_mb_artist",
     "enr_lastfm_tags", "enr_lastfm_info", "enr_deezer_track", "enr_deezer_match", "enr_artist_genre_llm", "enr_discogs_artist", "dim_artist", "dim_album", "dim_track",
     "bridge_track_artist", "track_uri_map", "track_key_map", "sessions", "plays", "skips", "genre_map",
-    "track_genre",
+    "track_genre", "artist_genre_override", "track_genre_override",
 }
 
 

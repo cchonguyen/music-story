@@ -10,7 +10,7 @@ from pipeline import config
 from pipeline.site_data import fixture_marts
 
 SRC = config.REPO_ROOT / "site" / "src"
-PAGES = ["index", "artists", "songs", "genres", "habits", "places"]
+PAGES = ["index", "artists", "songs", "genres", "habits", "places", "explorer"]
 
 if not (SRC / "artists.md").exists():
     pytest.skip("W10 not built yet", allow_module_level=True)
@@ -35,10 +35,10 @@ def test_one_loader_per_mart(marts):
 @pytest.mark.parametrize("page", PAGES)
 def test_page_exists_and_uses_real_loaders(page):
     text = (SRC / f"{page}.md").read_text()
-    used = re.findall(r'FileAttachment\("data/([a-z_]+)\.json"\)', text)
+    used = re.findall(r'FileAttachment\("data/([a-z_]+\.(?:json|parquet))"\)', text)
     assert used, f"{page}.md loads no data"
-    for name in used:
-        assert (SRC / "data" / f"{name}.json.sh").exists(), f"{page}.md uses missing data/{name}.json"
+    for fname in used:
+        assert (SRC / "data" / f"{fname}.sh").exists(), f"{page}.md uses missing data/{fname}"
 
 
 def test_pages_are_in_the_sidebar():

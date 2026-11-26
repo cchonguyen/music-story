@@ -1,6 +1,6 @@
 # W14: Artist genre sheet (export, edit outside, import back)
 
-Charlie's answers (2026-11-26): every play; every genre with its share; CSV built in the browser.
+Owner answers (2026-11-26): every play; every genre with its share; CSV built in the browser.
 
 - **Plays**: every row of `plays` (incognito included, skips excluded). Artists with `plays >= 3`.
 - **Genres**: artist-level inputs as in `pipeline/genre.py` (Last.fm, Spotify 100, MusicBrainz 100, Gemini x100, Discogs 80), mapped via `genre_map` (`is_genre`), umbrellas collapsed to parent. No share floor. Shares sum to 1.

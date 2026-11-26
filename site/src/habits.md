@@ -3,7 +3,6 @@
 Weekly listening rhythms, **10m / 20m / 30m session gap sensitivity**, **Intentionality vs. Shuffle Autopilot**, the **Skip Survival & Impatience Curve**, and the **Circadian BPM Heartbeat** powered by octave-corrected Deezer tempo and loudness telemetry.
 
 ```js
-import {SPECIFICATION_BASELINE} from "./specificationBaseline.js";
 const clock = await FileAttachment("data/clock.json").json();
 const sessions = await FileAttachment("data/sessions_year.json").json();
 const skip = await FileAttachment("data/skip_rate.json").json();
@@ -134,7 +133,7 @@ Inputs.table(
 
 ## Intentionality vs. Algorithmic Autopilot & The Skip Survival Curve
 
-Using `plays.shuffle`, `plays.reason_start` (`clickrow` / `playbtn` vs. `trackdone`), and `skips.ms_played`, inspect how much of your listening is deliberately hand-picked versus shuffle autopilot, and at what exact second (`0–5s`, `5–15s`, `15–30s`) skips occur.
+Using `plays.shuffle`, `plays.reason_start` (`clickrow` / `playbtn`), and `skips.ms_played`, inspect how much of your listening is deliberately hand-picked versus shuffle autopilot, and at what exact second (`0–5s`, `5–15s`, `15–30s`) skips occur.
 
 ```js
 const intentLens = view(Inputs.radio(
@@ -284,7 +283,7 @@ Inputs.table(
     .sort((a, b) => b.year - a.year)
     .map((d) => ({
       year: d.year,
-      spotify_plays: d.plays,
+      spotify_plays: d.spotify_plays,
       skips: d.skips,
       skip_rate: `${(d.skip_rate * 100).toFixed(1)}%`
     })),

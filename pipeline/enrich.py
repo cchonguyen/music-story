@@ -152,76 +152,88 @@ def fetch(apis: list[str], max_minutes: float | None, cache_path=None, interval_
         print("MUSIC_DB not found. Run build_pipeline --to 02 first.", file=sys.stderr)
         return 2
     con = duckdb.connect(str(config.MUSIC_DB), read_only=True)
+    cache: Cache | None = None
+    fetchers: dict[str, Fetcher] = {}
     try:
-        con.execute("SELECT 1 FROM events LIMIT 1")
-    except duckdb.Error:
-        print("events table missing. Run build_pipeline --to 02 first.", file=sys.stderr)
-        return 2
-    cache = Cache(cache_path, held=set() if spotify_artists else HELD)
-    cache.reset_failed()
-    fetchers = make_fetchers(apis, cache, spotify_budget=spotify_budget)
-    if not fetchers:
-        return 2
-    cover_cap = share = None
-    if "spotify" in fetchers and spotify_cover:
-        cover_cap, share = spotify_cap_cover(con, spotify_cover)
-    offered = seed_queue(con, cache, set(fetchers), spotify_min_plays, cover_cap)
-    if "spotify" in fetchers:
-        if spotify_cover:
-            cap = cover_cap
-            cache.set_limit("spotify", cap, f"cover={spotify_cover}")
-            print(f"spotify: most played tracks up to {share:.2%} of Spotify plays (priority <= {cap}); "
-                  "the rest stay unenriched")
-        elif spotify_min_plays > 1:
-            cap = spotify_cap(con, spotify_min_plays)
-            cache.set_limit("spotify", cap, f"min_plays={spotify_min_plays}")
-            print(f"spotify: tracks with {spotify_min_plays}+ plays only (priority <= {cap})")
-        else:
-            cache.set_limit("spotify", None)
-        print(f"spotify: budget {spotify_budget or 'none'} requests / 24 h; artists "
-              + ("fetched" if spotify_artists else "held (--spotify-artists to fetch)"))
-    names = load_names(con)
-    con.close()
-    print("seeded " + ", ".join(f"{a}.{e} {n}" for (a, e), n in offered.items()))
+        try:
+            con.execute("SELECT 1 FROM events LIMIT 1")
+        except duckdb.Error:
+            print("events table missing. Run build_pipeline --to 02 first.", file=sys.stderr)
+            return 2
+        cache = Cache(cache_path, held=set() if spotify_artists else HELD)
+        cache.reset_failed()
+        fetchers = make_fetchers(apis, cache, spotify_budget=spotify_budget)
+        if not fetchers:
+            return 2
+        cover_cap = share = None
+        if "spotify" in fetchers and spotify_cover:
+            cover_cap, share = spotify_cap_cover(con, spotify_cover)
+        offered = seed_queue(con, cache, set(fetchers), spotify_min_plays, cover_cap)
+        if "spotify" in fetchers:
+            if spotify_cover:
+                cap = cover_cap
+                cache.set_limit("spotify", cap, f"cover={spotify_cover}")
+                print(f"spotify: most played tracks up to {share:.2%} of Spotify plays (priority <= {cap}); "
+                      "the rest stay unenriched")
+            elif spotify_min_plays > 1:
+                cap = spotify_cap(con, spotify_min_plays)
+                cache.set_limit("spotify", cap, f"min_plays={spotify_min_plays}")
+                print(f"spotify: tracks with {spotify_min_plays}+ plays only (priority <= {cap})")
+            else:
+                cache.set_limit("spotify", None)
+            print(f"spotify: budget {spotify_budget or 'none'} requests / 24 h; artists "
+                  + ("fetched" if spotify_artists else "held (--spotify-artists to fetch)"))
+        names = load_names(con)
+    finally:
+        con.close()
+        if cache is not None and not fetchers:
+            cache.close()
 
-    stop = threading.Event()
-    workers = [Worker(a, f, names, stop, config.LASTFM_API_KEY) for a, f in fetchers.items()]
-    started = time.monotonic()
-    for w in workers:
-        w.start()
-    last_print = started
+    assert cache is not None
     try:
-        while True:
-            time.sleep(1.0)
-            elapsed_min = (time.monotonic() - started) / 60
-            live = [w for w in workers if w.is_alive()]
-            if cache.pending(fetchers) == 0 and all(w.idle for w in workers):
-                break
-            if not live:
-                break
-            paused = [w for w in workers if w.paused]
-            if not wait and paused and all(w.idle for w in workers):
-                for w in paused:
-                    resume = datetime.now().astimezone() + timedelta(seconds=cache.pause_left(w.api))
-                    print(f"{w.api}: paused ({cache.pause_reason(w.api) or 'rate limit'}); "
-                          f"rerun fetch after {resume:%a %H:%M} local")
-                break
-            if max_minutes is not None and elapsed_min >= max_minutes:
-                print("max-minutes reached, stopping")
-                break
-            if time.monotonic() - last_print >= interval_s:
-                last_print = time.monotonic()
-                print(progress_line(cache, started), flush=True)
-    except KeyboardInterrupt:
-        print("interrupted, stopping")
-    stop.set()
-    for w in workers:
-        w.join(timeout=30)
-        if w.note:
-            print(f"{w.api}: last pause: {w.note}")
-    print(progress_line(cache, started))
-    cache.close()
-    return 0
+        print("seeded " + ", ".join(f"{a}.{e} {n}" for (a, e), n in offered.items()))
+
+        stop = threading.Event()
+        workers = [Worker(a, f, names, stop, config.LASTFM_API_KEY) for a, f in fetchers.items()]
+        started = time.monotonic()
+        for w in workers:
+            w.start()
+        last_print = started
+        try:
+            while True:
+                time.sleep(1.0)
+                elapsed_min = (time.monotonic() - started) / 60
+                live = [w for w in workers if w.is_alive()]
+                if cache.pending(fetchers) == 0 and all(w.idle for w in workers):
+                    break
+                if not live:
+                    break
+                paused = [w for w in workers if w.paused]
+                if not wait and paused and all(w.idle for w in workers):
+                    for w in paused:
+                        resume = datetime.now().astimezone() + timedelta(seconds=cache.pause_left(w.api))
+                        print(f"{w.api}: paused ({cache.pause_reason(w.api) or 'rate limit'}); "
+                              f"rerun fetch after {resume:%a %H:%M} local")
+                    break
+                if max_minutes is not None and elapsed_min >= max_minutes:
+                    print("max-minutes reached, stopping")
+                    break
+                if time.monotonic() - last_print >= interval_s:
+                    last_print = time.monotonic()
+                    print(progress_line(cache, started), flush=True)
+        except KeyboardInterrupt:
+            print("interrupted, stopping")
+        stop.set()
+        for w in workers:
+            w.join(timeout=30)
+            if w.note:
+                print(f"{w.api}: last pause: {w.note}")
+        print(progress_line(cache, started))
+        return 0
+    finally:
+        for f in fetchers.values():
+            f.client.close()
+        cache.close()
 
 
 def spotify_play_coverage(cache: Cache) -> str | None:
@@ -310,9 +322,9 @@ def main(argv: list[str] | None = None) -> int:
     if bad:
         ap.error(f"unknown api: {','.join(bad)}")
     floor = args.spotify_min_plays
-    return fetch(apis, args.max_minutes, spotify_min_plays=floor or SPOTIFY_MIN_PLAYS, wait=args.wait,
-                 spotify_budget=args.spotify_budget, spotify_artists=args.spotify_artists,
-                 spotify_cover=None if floor else args.spotify_cover)
+    return fetch(apis, args.max_minutes, spotify_min_plays=floor if floor is not None else SPOTIFY_MIN_PLAYS,
+                 wait=args.wait, spotify_budget=args.spotify_budget, spotify_artists=args.spotify_artists,
+                 spotify_cover=None if floor is not None else args.spotify_cover)
 
 
 if __name__ == "__main__":

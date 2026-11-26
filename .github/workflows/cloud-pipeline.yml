@@ -1,0 +1,107 @@
+name: Cloud Pipeline & Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Pipeline stages to run
+        type: choice
+        default: build-and-deploy
+        options:
+          - build-and-deploy
+          - enrich-build-deploy
+          - enrich-only
+          - build-only
+      enrich_max_minutes:
+        description: Max minutes for enrich fetch
+        type: string
+        default: "30"
+      spotify_min_plays:
+        description: Optional Spotify play floor (e.g. 1 or 3); blank uses --spotify-cover 0.80
+        type: string
+        default: ""
+  # Uncomment once R2 and Cloudflare secrets are configured to run nightly at 09:00 UTC:
+  # schedule:
+  #   - cron: "0 9 * * *"
+
+concurrency:
+  group: music-story-cloud-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DATA_DIR: /tmp/music-story/raw
+      CACHE_DIR: /tmp/music-story/cache
+      MUSIC_DB: /tmp/music-story/build/music.duckdb
+      SITE_DB: /tmp/music-story/build/music.duckdb
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+      LASTFM_USER: ${{ secrets.LASTFM_USER }}
+      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+      SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+      SPOTIFY_DAILY_BUDGET: ${{ secrets.SPOTIFY_DAILY_BUDGET }}
+      MUSICBRAINZ_CONTACT: ${{ secrets.MUSICBRAINZ_CONTACT }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_SITE_DOMAIN: ${{ secrets.CLOUDFLARE_SITE_DOMAIN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv and Python dependencies
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Python environment
+        run: uv sync --frozen
+
+      - name: Set up Node.js
+        if: ${{ (github.event.inputs.mode || 'build-and-deploy') == 'build-and-deploy' || (github.event.inputs.mode || 'build-and-deploy') == 'enrich-build-deploy' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Pull raw exports, cache, and DuckDB from R2
+        run: bash scripts/r2_sync.sh pull --raw --cache --db
+
+      - name: Run enrichment fetch
+        if: ${{ (github.event.inputs.mode || 'build-and-deploy') == 'enrich-only' || (github.event.inputs.mode || 'build-and-deploy') == 'enrich-build-deploy' }}
+        run: |
+          if [[ ! -f "$MUSIC_DB" ]]; then
+            uv run python -m pipeline.build_pipeline --from 00 --to 02
+          fi
+          args=(--max-minutes "${{ github.event.inputs.enrich_max_minutes || '30' }}")
+          if [[ -n "${{ github.event.inputs.spotify_min_plays }}" ]]; then
+            args+=(--spotify-min-plays "${{ github.event.inputs.spotify_min_plays }}")
+          fi
+          uv run python -m pipeline.enrich fetch "${args[@]}"
+          uv run python -m pipeline.enrich status
+
+      - name: Push updated HTTP cache to R2
+        if: ${{ always() && ((github.event.inputs.mode || 'build-and-deploy') == 'enrich-only' || (github.event.inputs.mode || 'build-and-deploy') == 'enrich-build-deploy') }}
+        run: bash scripts/r2_sync.sh push --cache
+
+      - name: Build DuckDB pipeline and push DB to R2
+        if: ${{ (github.event.inputs.mode || 'build-and-deploy') != 'enrich-only' }}
+        run: |
+          uv run python -m pipeline.build_pipeline
+          bash scripts/r2_sync.sh push --db
+
+      - name: Build Observable site and deploy to Cloudflare Workers
+        if: ${{ (github.event.inputs.mode || 'build-and-deploy') == 'build-and-deploy' || (github.event.inputs.mode || 'build-and-deploy') == 'enrich-build-deploy' }}
+        run: |
+          : "${CLOUDFLARE_SITE_DOMAIN:?CLOUDFLARE_SITE_DOMAIN secret must be set}"
+          : "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN secret must be set}"
+          (cd site && npm ci && npm run build)
+          python3 -c 'import os, pathlib; p = pathlib.Path("wrangler.jsonc"); p.write_text(p.read_text().replace("music.example.com", os.environ["CLOUDFLARE_SITE_DOMAIN"]))'
+          npx --yes wrangler deploy

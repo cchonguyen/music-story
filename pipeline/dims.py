@@ -36,7 +36,7 @@ def _lookup(con: duckdb.DuckDBPyConnection, table: str) -> None:
 
 
 # Each statement builds one temp table; order matters.
-STEPS = [
+PRE_LOOKUP_STEPS = [
     # --- Spotify / MB lookups -------------------------------------------------------------
     """CREATE OR REPLACE TEMP TABLE _sp AS
        SELECT * FROM enr_spotify_track WHERE http_status = 200""",
@@ -45,6 +45,9 @@ STEPS = [
     # Deezer search hits (already checked against the key) that carry an ISRC
     """CREATE OR REPLACE TEMP TABLE _dz AS
        SELECT * FROM enr_deezer_match WHERE http_status = 200 AND isrc IS NOT NULL""",
+]
+
+MAIN_STEPS = [
     # --- 1. per URI: plays, most common mbid, most common key ------------------------------
     """CREATE OR REPLACE TEMP TABLE _uri AS
        SELECT track_uri, count(*) AS n FROM events WHERE track_uri IS NOT NULL GROUP BY 1""",
@@ -359,10 +362,11 @@ def coverage_line(con: duckdb.DuckDBPyConnection) -> str:
 def run(con: duckdb.DuckDBPyConnection) -> None:
     for t in TABLES:
         con.execute(f"DELETE FROM {t}")
-    for sql in STEPS:
-        if "_uri AS" in sql:  # _sp and _mb exist now; build the normalised lookups
-            for table in LOOKUPS:
-                _lookup(con, table)
+    for sql in PRE_LOOKUP_STEPS:
+        con.execute(sql)
+    for table in LOOKUPS:
+        _lookup(con, table)
+    for sql in MAIN_STEPS:
         if "$generic" in sql:
             con.execute(sql, {"generic": sorted(GENERIC_MIX)})
         else:

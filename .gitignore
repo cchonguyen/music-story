@@ -31,12 +31,8 @@ site/src/.observablehq/cache/
 # wrangler local state
 .wrangler/
 
-# harness ephemeral session state
-.spec/.strike-counter.json
-.spec/.learn-staging.txt
-.spec/HANDOFF_PACKET.md
-.spec/.slice-checkpoint
-.spec/.vibe-checkpoint.json
+# harness ephemeral session state & AI Studio
+.aistudio/
 
 # external review dossier (prep-review)
 audit-dossier.md
@@ -56,4 +52,3 @@ audit-dossier.md
 .spec/.vibe-checkpoint.json
 .harness-backup/
 # <<< harness <<<
-.spec/.events/

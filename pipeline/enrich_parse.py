@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 import duckdb
+import pyarrow as pa
 
 from pipeline.enrich_cache import Cache
 from pipeline.enrich_clients import deezer_hit
@@ -129,7 +130,21 @@ def _mb_artists(cache: Cache) -> list[tuple]:
     return out
 
 
-# ---- Last.fm ------------------------------------------------------------------
+def _insert_lastfm_tags(con: duckdb.DuckDBPyConnection, rows: list[tuple]) -> None:
+    if not rows:
+        return
+    tbl = pa.table({
+        "entity_type": pa.array([r[0] for r in rows], pa.string()),
+        "entity_key": pa.array([r[1] for r in rows], pa.string()),
+        "tag": pa.array([r[2] for r in rows], pa.string()),
+        "count": pa.array([r[3] for r in rows], pa.int32()),
+        "fetched_at_utc": pa.array([r[4] for r in rows], pa.timestamp("us")),
+    })
+    con.register("_lfm_tags", tbl)
+    try:
+        con.execute("INSERT OR REPLACE INTO enr_lastfm_tags SELECT * FROM _lfm_tags")
+    finally:
+        con.unregister("_lfm_tags")
 _TAG_ENDPOINTS = {"track.getTopTags": "track", "artist.getTopTags": "artist", "album.getTopTags": "album"}
 
 
@@ -226,11 +241,7 @@ def _deezer_matches(cache: Cache, by_id: dict[str, tuple[int, dict | None, str]]
 def _gemini_artist_genres(cache: Cache) -> list[tuple]:
     out = []
     # Reads every endpoint matching 'artist_genre:*'
-    with cache.lock:
-        cur = cache.db.execute(
-            "SELECT endpoint, key, status, body, fetched_at FROM http_cache WHERE api = 'gemini' AND endpoint LIKE 'artist_genre:%'"
-        ).fetchall()
-    for endpoint, key, status, body, at in cur:
+    for endpoint, key, status, body, at in cache.rows_like("gemini", "artist_genre:%"):
         if status != 200 or not body:
             continue
         parts = endpoint.split(":")
@@ -277,7 +288,7 @@ def parse_cache(con: duckdb.DuckDBPyConnection, cache: Cache) -> None:
     _insert(con, "enr_spotify_artist", _spotify_artists(cache))
     _insert(con, "enr_mb_recording", _mb_recordings(cache))
     _insert(con, "enr_mb_artist", _mb_artists(cache))
-    _insert(con, "enr_lastfm_tags", _lastfm_tags(cache))
+    _insert_lastfm_tags(con, _lastfm_tags(cache))
     _insert(con, "enr_lastfm_info", _lastfm_info(cache))
     by_id = _deezer_ids(cache)
     _insert(con, "enr_deezer_track", _deezer(cache, by_id))

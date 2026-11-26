@@ -1,4 +1,4 @@
--- Names for the ids the charts show. Runs last; reads other marts.
+-- Names for the ids the charts show. Runs after 10_simple and 20_trap; reads their marts.
 CREATE OR REPLACE TABLE mart_track_label AS
 SELECT t.track_id, t.title, t.primary_artist_id AS artist_id
 FROM dim_track t

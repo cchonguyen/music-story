@@ -34,11 +34,17 @@ def query_wikidata_batch(mbids: list[str]) -> dict[str, list[int]]:
     }}
     """
     headers = {"User-Agent": USER_AGENT, "Accept": "application/sparql-results+json"}
-    resp = httpx.get(SPARQL_URL, params={"query": sparql}, headers=headers, timeout=45.0)
-    if resp.status_code != 200:
-        logger.warning(f"Wikidata returned HTTP {resp.status_code}: {resp.text[:200]}")
-        return {}
+    resp = None
+    for attempt in range(1, 4):
+        resp = httpx.get(SPARQL_URL, params={"query": sparql}, headers=headers, timeout=45.0)
+        if resp.status_code == 200:
+            break
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
+            time.sleep(2.0 * attempt)
+            continue
+        raise RuntimeError(f"Wikidata returned HTTP {resp.status_code}: {resp.text[:200]}")
 
+    assert resp is not None
     data = resp.json()
     bindings = data.get("results", {}).get("bindings", [])
     mapping: dict[str, list[int]] = {}

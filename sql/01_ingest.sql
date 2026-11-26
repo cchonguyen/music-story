@@ -102,11 +102,11 @@ SELECT
         WHEN lower(platform) LIKE '%ios%' OR lower(platform) LIKE '%iphone%' OR lower(platform) LIKE '%ipad%' THEN 'ios'
         WHEN lower(platform) LIKE 'android%' THEN 'android'
         WHEN lower(platform) LIKE 'windows%' THEN 'windows'
-        WHEN platform LIKE 'OS X%' OR platform LIKE 'osx%' THEN 'mac'
-        WHEN platform LIKE 'Linux%' THEN 'linux'
-        WHEN platform LIKE 'WebPlayer%' OR platform LIKE 'web_player%' THEN 'web'
-        WHEN platform LIKE 'cast%' OR platform LIKE 'Partner google%' THEN 'cast'
-        WHEN platform LIKE 'Partner%' THEN 'partner'
+        WHEN lower(platform) LIKE 'os x%' OR lower(platform) LIKE 'osx%' THEN 'mac'
+        WHEN lower(platform) LIKE 'linux%' THEN 'linux'
+        WHEN lower(platform) LIKE 'webplayer%' OR lower(platform) LIKE 'web_player%' THEN 'web'
+        WHEN lower(platform) LIKE 'cast%' OR lower(platform) LIKE 'partner google%' THEN 'cast'
+        WHEN lower(platform) LIKE 'partner%' THEN 'partner'
         ELSE 'other'
     END                                                                       AS platform_family,
     conn_country                                                              AS country_raw,

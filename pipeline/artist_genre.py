@@ -1,4 +1,4 @@
-"""Artist genres for Concert Tracker (concert.charliechonguyen.com).
+"""Artist genres for Concert Tracker.
 
     uv run python -m pipeline.artist_genre export [--out build/artist_genres.json]
 

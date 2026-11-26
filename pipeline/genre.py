@@ -370,6 +370,25 @@ def unmapped(con: duckdb.DuckDBPyConnection, top: int) -> list[tuple[int, str]]:
             UNION ALL
             SELECT t.track_id, lower(trim(g.tag)) FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id
               JOIN enr_mb_artist m ON m.artist_mbid = d.artist_mbid, unnest(m.genres) g(tag)
+            UNION ALL
+            SELECT track_id, lower(trim(g.tag)) FROM (
+                SELECT DISTINCT t.track_id, r.genres
+                FROM dim_track t
+                JOIN (SELECT genres, unnest(isrcs) AS isrc FROM enr_mb_recording WHERE http_status = 200) r
+                  ON r.isrc = t.isrc
+                UNION
+                SELECT t.track_id, r.genres
+                FROM dim_track t JOIN enr_mb_recording r
+                  ON r.lookup_kind = 'search' AND r.lookup_key = t.artist_norm || '::' || t.full_norm AND r.score >= 90
+            ) x, unnest(x.genres) g(tag)
+            UNION ALL
+            SELECT t.track_id, lower(trim(split_part(unnest(llm.genres), '::', 2)))
+            FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id
+            JOIN enr_artist_genre_llm llm ON llm.artist_norm = d.artist_norm
+            UNION ALL
+            SELECT t.track_id, lower(trim(unnest(disc.styles)))
+            FROM dim_track t JOIN dim_artist d ON d.artist_id = t.primary_artist_id
+            JOIN enr_discogs_artist disc ON disc.artist_norm = d.artist_norm
         ), pc AS (SELECT track_id, count(*) AS n FROM plays GROUP BY 1)
         SELECT sum(pc.n)::BIGINT AS p, tag FROM (SELECT DISTINCT track_id, tag FROM tagged) x
         JOIN pc USING (track_id) WHERE tag NOT IN (SELECT tag FROM genre_map)

@@ -9,12 +9,12 @@ this spec.
 
 ## Hosting (decided 2026-10-22)
 Cloudflare Workers with static assets, not Pages: no public *.workers.dev or preview URL, so one
-Cloudflare Access application on `music.charliechonguyen.com` covers everything.
+Cloudflare Access application on your custom domain covers everything.
 
 `wrangler.jsonc` at the repo root: name `music-story`, a recent `compatibility_date`, assets-only
 (`"assets": {"directory": "./site/dist", "not_found_handling": "404-page"}`, no `main`),
 `"workers_dev": false`, `"preview_urls": false`,
-`"routes": [{"pattern": "music.charliechonguyen.com", "custom_domain": true}]`.
+`"routes": [{"pattern": "music.example.com", "custom_domain": true}]`.
 
 ## pipeline/site_data.py
 - `mart_rows(name: str, db: Path | None = None) -> list[dict]`: rows of `mart_<name>` ordered by its

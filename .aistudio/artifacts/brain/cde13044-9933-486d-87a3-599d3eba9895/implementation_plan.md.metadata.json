@@ -1,6 +1,0 @@
-{
-  "summary":  "Updated implementation_plan.md so scripts/make_fixtures.py citations consistently use lines 936-939 everywhere across Section 1.2 and Section 2 Packet 1.",
-  "updatedAt":  "2026-10-31T05:20:10.311512096Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

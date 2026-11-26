@@ -6,7 +6,6 @@ Every play, queryable in the browser with **Track Genre Lineage X-Ray** (`LEFT J
 // Not Framework's DuckDBClient: that self-hosts duckdb-*.wasm (34-39 MiB), over the 25 MiB file limit of
 // Workers static assets. Only the library comes from the CDN; the data stays behind Access.
 import * as ddb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
-const xrayJsonText = await FileAttachment("data/genre_xray.json").text();
 
 async function openExplorer() {
   const bundle = await ddb.selectBundle(ddb.getJsDelivrBundles());
@@ -14,17 +13,14 @@ async function openExplorer() {
   const instance = new ddb.AsyncDuckDB(new ddb.ConsoleLogger(ddb.LogLevel.WARNING), new Worker(workerUrl));
   await instance.instantiate(bundle.mainModule, bundle.pthreadWorker);
   URL.revokeObjectURL(workerUrl);
-  const file = await FileAttachment("data/plays_explorer.parquet").arrayBuffer();
-  const bytes = new Uint8Array(file);
+  const [playsBuf, xrayBuf] = await Promise.all([
+    FileAttachment("data/plays_explorer.parquet").arrayBuffer(),
+    FileAttachment("data/genre_xray.parquet").arrayBuffer()
+  ]);
   const conn = await instance.connect();
-  if (bytes[0] === 0x50) {
-    await instance.registerFileBuffer("plays.parquet", bytes);
-    await conn.query("CREATE TABLE plays AS SELECT * FROM 'plays.parquet'");
-  } else {
-    await instance.registerFileText("plays.json", new TextDecoder().decode(bytes));
-    await conn.query("CREATE TABLE plays AS SELECT CAST(day AS DATE) AS day, CAST(hour AS TINYINT) AS hour, CAST(weekday AS TINYINT) AS weekday, artist, title, album, artist_norm, title_norm, parent_genre, style, CAST(minutes AS FLOAT) AS minutes, is_skip, platform, country, source FROM read_json_auto('plays.json')");
-  }
-  await instance.registerFileText("genre_xray.json", xrayJsonText);
+  await instance.registerFileBuffer("plays.parquet", new Uint8Array(playsBuf));
+  await conn.query("CREATE TABLE plays AS SELECT * FROM 'plays.parquet'");
+  await instance.registerFileBuffer("genre_xray.parquet", new Uint8Array(xrayBuf));
   await conn.query(`
     CREATE TABLE xray AS
     SELECT CAST(track_id AS VARCHAR) AS track_id,
@@ -36,7 +32,7 @@ async function openExplorer() {
            CAST(level AS VARCHAR) AS genre_level,
            CAST(secondary_styles AS VARCHAR) AS secondary_styles,
            CAST(suppressed_umbrellas AS VARCHAR) AS suppressed_umbrellas
-    FROM read_json_auto('genre_xray.json')
+    FROM 'genre_xray.parquet'
   `);
   await conn.query(`
     CREATE VIEW plays_xray AS
@@ -144,7 +140,7 @@ const platformFilter = view(Inputs.select([null, ...platformList], {
   label: "Platform",
   format: (d) => d ?? "all"
 }));
-const levelFilter = view(Inputs.select([null, "track", "album", "artist"], {
+const levelFilter = view(Inputs.select([null, "manual", "track", "album", "artist"], {
   label: "Genre tag level",
   format: (d) => d ?? "all"
 }));

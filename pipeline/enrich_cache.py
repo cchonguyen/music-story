@@ -231,10 +231,21 @@ class Cache:
 
     # ---- reading for the parser -------------------------------------------
     def rows(self, api: str, endpoint: str) -> Iterator[tuple[str, int, str | None, str]]:
-        """(key, status, body, fetched_at) for one endpoint."""
+        """(key, status, body, fetched_at) for one endpoint, streamed in batches."""
         with self.lock:
-            data = self.db.execute(
+            cur = self.db.execute(
                 "SELECT key, status, body, fetched_at FROM http_cache WHERE api=? AND endpoint=?",
                 (api, endpoint),
-            ).fetchall()
-        yield from data
+            )
+            while batch := cur.fetchmany(1000):
+                yield from batch
+
+    def rows_like(self, api: str, endpoint_pattern: str) -> Iterator[tuple[str, str, int, str | None, str]]:
+        """(endpoint, key, status, body, fetched_at) for endpoints matching LIKE pattern."""
+        with self.lock:
+            cur = self.db.execute(
+                "SELECT endpoint, key, status, body, fetched_at FROM http_cache WHERE api=? AND endpoint LIKE ?",
+                (api, endpoint_pattern),
+            )
+            while batch := cur.fetchmany(1000):
+                yield from batch

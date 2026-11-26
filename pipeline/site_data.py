@@ -20,9 +20,27 @@ SITE_FILTERS = {
     "artist_year": "rank <= 50",
     "track_year": "rank <= 50",
     "binge": "window_plays >= 15",
+    "genre_xray": "plays >= 2",
 }
-INPUT_TABLES = ["plays", "skips", "sessions", "dim_artist", "dim_album", "dim_track", "bridge_track_artist",
-                "track_genre", "genre_map", "enr_deezer_track", "fixture_scenarios"]
+INPUT_TABLES = [
+    "plays", "skips", "sessions", "dim_artist", "dim_album", "dim_track", "bridge_track_artist",
+    "track_genre", "genre_map", "enr_deezer_track", "enr_lastfm_tags", "enr_spotify_artist",
+    "enr_mb_artist", "enr_artist_genre_llm", "enr_discogs_artist", "fixture_scenarios",
+]
+
+
+def _copy_fixture_inputs(con: duckdb.DuckDBPyConnection, fixture_db_path: Path) -> None:
+    con.execute(f"ATTACH '{fixture_db_path}' AS fx (READ_ONLY)")
+    fx_tables = {
+        r[0]
+        for r in con.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE database_name = 'fx'"
+        ).fetchall()
+    }
+    for t in INPUT_TABLES:
+        if t in fx_tables:
+            con.execute(f"CREATE TABLE {t} AS SELECT * FROM fx.{t}")
+    con.execute("DETACH fx")
 
 
 def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb.DuckDBPyConnection:
@@ -37,23 +55,21 @@ def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb
         if cache_db.exists() and cache_db.stat().st_mtime >= src_mtime:
             return duckdb.connect(str(cache_db), read_only=True)
         cache_db.parent.mkdir(parents=True, exist_ok=True)
-        if cache_db.exists():
-            cache_db.unlink()
-        con = duckdb.connect(str(cache_db))
-        con.execute(f"ATTACH '{fixture_db_path}' AS fx (READ_ONLY)")
-        for t in INPUT_TABLES:
-            con.execute(f"CREATE TABLE {t} AS SELECT * FROM fx.{t}")
-        con.execute("DETACH fx")
-        for f in files:
-            con.execute(f.read_text())
-        con.close()
+        tmp_db = cache_db.with_name(f"{cache_db.name}.{os.getpid()}.tmp")
+        try:
+            con = duckdb.connect(str(tmp_db))
+            _copy_fixture_inputs(con, fixture_db_path)
+            for f in files:
+                con.execute(f.read_text())
+            con.close()
+            os.replace(tmp_db, cache_db)
+        except BaseException:
+            tmp_db.unlink(missing_ok=True)
+            raise
         return duckdb.connect(str(cache_db), read_only=True)
 
     con = duckdb.connect()
-    con.execute(f"ATTACH '{fixture_db_path}' AS fx (READ_ONLY)")
-    for t in INPUT_TABLES:
-        con.execute(f"CREATE TABLE {t} AS SELECT * FROM fx.{t}")
-    con.execute("DETACH fx")
+    _copy_fixture_inputs(con, fixture_db_path)
     for f in files:
         con.execute(f.read_text())
     return con
@@ -63,6 +79,7 @@ def fixture_marts(fixture_db_path: Path, mart_file: str | None = None) -> duckdb
 # which shrinks the dictionary-encoded Zstd file.
 PARQUET_EXPORTS = {
     "explorer_plays": "artist, album, title, day",
+    "mart_genre_xray": "artist_norm, title_norm, parent_genre, style",
 }
 MAX_PARQUET_BYTES = 20 * 1024 * 1024  # 20 MiB safety ceiling below Cloudflare Workers 25 MiB limit
 
@@ -70,38 +87,6 @@ MAX_PARQUET_BYTES = 20 * 1024 * 1024  # 20 MiB safety ceiling below Cloudflare W
 def _site_con(db: Path | None) -> duckdb.DuckDBPyConnection:
     db = db or (Path(os.environ["SITE_DB"]) if os.environ.get("SITE_DB") else None)
     if db is not None:
-        con = duckdb.connect(str(db), read_only=True)
-        has_day = con.execute(
-            "SELECT count(*) FROM information_schema.columns "
-            "WHERE table_name = 'explorer_plays' AND column_name = 'day'"
-        ).fetchone()[0] > 0
-        has_pulse = con.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'mart_tempo_pulse'"
-        ).fetchone()[0] > 0
-        has_xray = con.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'mart_genre_xray'"
-        ).fetchone()[0] > 0
-        has_plays = con.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'plays'"
-        ).fetchone()[0] > 0
-        has_genre_map = con.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'genre_map'"
-        ).fetchone()[0] > 0
-        is_fresh_genre = True
-        if has_plays and has_genre_map:
-            db_parents = {r[0] for r in con.execute("SELECT DISTINCT parent_genre FROM genre_map WHERE is_genre").fetchall()}
-            from pipeline.genre import PARENTS
-            is_fresh_genre = db_parents.issubset(set(PARENTS)) and len(db_parents) == len(PARENTS)
-        if (has_day and has_pulse and has_xray and is_fresh_genre) or not has_plays:
-            return con
-        con.close()
-        con_rw = duckdb.connect(str(db))
-        if has_plays and not is_fresh_genre:
-            from pipeline import genre
-            genre.run(con_rw)
-        for f in sorted((config.SQL_DIR / "marts").glob("*.sql")):
-            con_rw.execute(f.read_text())
-        con_rw.close()
         return duckdb.connect(str(db), read_only=True)
     return fixture_marts(config.FIXTURE_DB)
 
@@ -161,7 +146,7 @@ def main(argv: list[str]) -> int:
             rows = track_sheet.rows(con)
         finally:
             con.close()
-        json.dump(rows, sys.stdout, default=_json_default)
+        json.dump(rows, sys.stdout, default=_json_default, separators=(",", ":"))
         return 0
     if argv[0] == "artist_genre_sheet":
         from pipeline import artist_sheet
@@ -171,9 +156,9 @@ def main(argv: list[str]) -> int:
             rows = artist_sheet.rows(con)
         finally:
             con.close()
-        json.dump(rows, sys.stdout, default=_json_default)
+        json.dump(rows, sys.stdout, default=_json_default, separators=(",", ":"))
         return 0
-    json.dump(mart_rows(argv[0]), sys.stdout, default=_json_default)
+    json.dump(mart_rows(argv[0]), sys.stdout, default=_json_default, separators=(",", ":"))
     return 0
 
 
